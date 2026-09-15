@@ -1,4 +1,4 @@
-# [NeuroNexus Data Pipeline] — Neuroscience Data Processing Pipeline
+# [NeuroNexus Data Pipeline] 
 
 MATLAB/Python/R data-processing pipeline for
 neural recordings from NeuroNexus silicon probes in mice, covering
