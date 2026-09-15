@@ -1,37 +1,49 @@
-% %% Notes for Claude (and you, dear reader)
-% 
-% INPUTS:
-%   data - OpenEphys recordings in .Rhythm Data format. (a recording is
-%          synonomous with a consecutive series of trials for a given condition.
-%          Sometimes you will start/stop recording without changing the
-%          file name or condition and this creates subfolders in that recording)
-%   
-%   animal - PROVIDED BY USER. string providing animal name (recommended naming format
-%            is YYYYMMDD-p# [dateOfRecording-postnatalDay]
-%   
-%   stim - PROVIDED BY USER. string providing name of the stimulus in this recording. 
-% 
-%   other assorted parameters set by the user
-% 
-% OUTPUTS:
+% OpenEphys_BaseAnalysis.m
+%
+% Description: Preprocesses a single OpenEphys silicon-probe recording
+%   (one animal, one stimulus condition) end-to-end: loads raw data,
+%   detects stimulus onsets from the TTL channel, epochs peristimulus
+%   data, and (per user toggles) computes LFP, CSD, time-frequency
+%   (Morlet wavelet), and MUA/spiking results. Optionally prompts the
+%   user interactively to remove bad channels/trials and to tune
+%   spike-detection and TF settings. Saves one ProbeInfo struct per
+%   animal plus one results file and summary figure set per
+%   analysis type, per stimulus condition. This is the first script run
+%   per recording in the PreProcessing_StimData pipeline stage.
+%
+% Inputs:
+%   data (OpenEphys recording, .Rhythm Data format, loaded via uipickfiles)
+%     - a recording is a consecutive series of trials for a given
+%       condition. Starting/stopping a recording without changing the
+%       file name or condition creates subfolders within it.
+%   animal (string) - PROVIDED BY USER. Animal identifier, recommended
+%     format YYYYMMDD-p# [dateOfRecording-postnatalDay]. Used as the
+%     prefix for all output files.
+%   stim (string) - PROVIDED BY USER. Name of the stimulus in this
+%     recording. Used as part of all output file names.
+%   other assorted parameters set by the user at the top of the script
+%     (load/save directories, which analyses to run, probe layout,
+%     number of probes, brain areas per probe, etc.)
+%
+% Outputs:
 %    [Note: ProbeInfo has the prefix animal-]
-%     
+%
 %    ProbeInfo.mat - struct containing several fields with information
 %                    relevant to the experiment, recording details, and plotting of data.
 %                    It is initialized in this script and can be further updated later. Has
 %                    the following fields:
-%                      
-%                    .Animal = animal; %animal name used for file labels and figures
-%                    .Areas = areas; %which brain areas are associated with each probe
-%                    .ProbeNum = probenum; %number of probes in the recording
-%                    .ProbeMaps = probemaps; %2d matrices reflecting shape of each probe and associated channel IDs in data (IDs correspond to rows of raw data)
-%                    .ChanIds = chan_ids; %vector of channel IDs in order
-%                    .Chans = chans; %number of recording channels
-%                    .TTLch = TTLch; %channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
-%                    .poi = poi; %which probes in the recording are to be analyzed?
-%                    .ProbeIds = probeids; %channel IDs within each probe (starts at 1 : number of channels on probe)
-%                    .Ch_Remove = {}; %empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken) 
-%  
+%
+%                    .Animal (string) - animal name used for file labels and figures
+%                    .Areas (cell array of strings, 1 x probenum) - which brain areas are associated with each probe
+%                    .ProbeNum (int) - number of probes in the recording
+%                    .ProbeMaps (cell array, 1 x probenum) - 2d matrices reflecting shape of each probe and associated channel IDs in data (IDs correspond to rows of raw data)
+%                    .ChanIds (int vector) - vector of channel IDs in order
+%                    .Chans (int) - number of recording channels
+%                    .TTLch (int) - channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
+%                    .poi (int vector) - which probes in the recording are to be analyzed?
+%                    .ProbeIds (cell array, 1 x probenum) - channel IDs within each probe (starts at 1 : number of channels on probe)
+%                    .Ch_Remove (cell array) - empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken)
+%
 %     [Note: all following output files have the prefix animal-stim-]
 %     LFP.mat - mat file containing: 
 %               stim_lfp_stimchunks - 3D array of lfp data split into
@@ -108,21 +120,24 @@
 %    Probe-Spikemean_results -  figure of mean MUA spike rate for each channel, 
 %                               plotted in shape of probe (ex. 8x8 probe has an 8x8 arrangement of
 %                               subplots). There is one per probe
-%    Probe-SpikeRaster_results -  figure of MUA raster for all trials for each channel, 
+%    Probe-SpikeRaster_results -  figure of MUA raster for all trials for each channel,
 %                                 plotted in shape of probe (ex. 8x8 probe has an 8x8 arrangement of
 %                                 subplots). There is one per probe
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
+%
+% Dependencies: None from this pipeline — this is the first script run
+%   per recording (PreProcessing_StimData stage). Requires OpenEphys
+%   MATLAB tools on the path (uipickfiles, Session/continuous data
+%   readers) plus the CSDallshank and slanCM helper functions.
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
 
 %% NEEDS INPUT FIRST
 clear all
