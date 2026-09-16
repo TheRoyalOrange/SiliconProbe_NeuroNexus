@@ -1,56 +1,51 @@
-%% Notes for my dearest Claude
-% 
-%  INPUTS:
-%        animal - PROVIDED BY USER. string providing animal name matching
-%                 that of the animal who's data you'd like to examine 
-%                 (at some point should probably just automatically get this from filename) 
-%        filename - an extension of animal, now with condition name
-%                   appended. Should match the first part of whatever animal and
-%                   condition data you'd like to examine
+% QuickTrialRemove.m
+%
+% Description: Downstream, standalone trial-curation utility. Lets the
+%   user visually inspect LFP and spike-raster traces for one channel
+%   of an already-preprocessed animal/condition (output of
+%   OpenEphys_BaseAnalysis.m or a variant), manually choose trials to
+%   exclude, and persist the updated tr_keep/tr_remove back into the
+%   corresponding LFP.mat, spiking_results.mat, and TF_results.mat
+%   files (via save(...,'-append')). Deliberately does NOT update
+%   CSD_results.mat: CSD is stored as a trial-mean rather than
+%   per-trial data, so removing trials there would require recomputing
+%   the CSD (not done by this script).
+%
+% Inputs:
+%   animal (string) - PROVIDED BY USER. Animal name matching the data
+%     to examine (typed independently of filename as a safety check
+%     against editing the wrong files).
+%   filename (string) - PROVIDED BY USER. animal name + condition name,
+%     matching the prefix of the LFP/spiking/TF result files to edit.
+%   chan (int) - PROVIDED BY USER. Channel to inspect/plot.
+%   fs (int) - PROVIDED BY USER. Sampling rate of the original
+%     recording, in Hz (used to bin spikes into 1 ms bins).
+%   stim_spike_stimchunks (double, trials x 30kHz trial length x
+%     channels) and tr_keep (int vector, trials) - PROVIDED BY USER.
+%     INFERRED DATA CONTRACT: expected to already be loaded into the
+%     workspace from filename-spiking_results.mat (per the script's own
+%     instruction to "double click on a spike results mat file to open
+%     it" before running) — this script does not load them itself,
+%     unlike stim_lfp_stimchunks below.
+%   stim_lfp_stimchunks - loaded automatically by this script from
+%     filename-LFP.mat. 3D array of lfp data split into trials. Data is
+%     downsampled to 1kHz from original 30kHz in the recording.
+%     size[trials x trial length x channels]
+%
+% Outputs:
+%   tr_keep, tr_remove - updated trial-inclusion vectors, saved
+%     (via -append) into filename-LFP.mat, filename-spiking_results.mat,
+%     and filename_TF_results.mat. Not written to CSD_results.mat (see
+%     Description).
+%
+% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the _Bundled /
+%   _MixedTrials variant) to have already been run for this
+%   animal/condition, producing the LFP.mat, spiking_results.mat, and
+%   TF_results.mat files this script loads/appends to.
 %
 %
-%      [Note: the following input has prefix filname-]
-%       
-%       spiking_results.mat - mat file containing:
-%                           stim_spike_stimchunks - 3D array of MUA data,
-%                                                   where each timepoint is labelled as 0 or 1, for
-%                                                   no spike or spike. Data is in original 30kHz
-%                                                   sampling rate.
-%                                                   size[trials x 30kHz trial length x channels]
-%                                                 
-%                           tr_keep  - vector of trials considered "good" according to 
-%                                      user. By default, this contains all trials and
-%                                      is modified later by this script
-%                                      size[trials]
-%                           tr_remove - the complement to tr_keep. By default this is
-%                                       left empty initially and modified later by this
-%                                       script size[empty]
-% 
-%       stim_lfp_stimchunks - loaded from LFP.mat file with prefix
-%                             filename. 3D array of lfp data split into
-%                             trials. Data is downsampled to 1kHz from original
-%                             30kHz in the recording. size[trials x trial length x channels] 
-% 
-% 
 %
-% OUTPUTS:  
-% 
-%    tr_remove - modified from previous state and saved in new form for all
-%                corresponding LFP.mat, TF_results.mat, and spiking_results.mat
-%                files with prefix = filename. (Does not change in CSD_results.mat 
-%                because the data there is saved as mean across trials and
-%                would have to be recalculated accordingly. Probably should
-%                fix that sometime). 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
+%
 
 %%
 %first, double click on a spike results mat file to open it
