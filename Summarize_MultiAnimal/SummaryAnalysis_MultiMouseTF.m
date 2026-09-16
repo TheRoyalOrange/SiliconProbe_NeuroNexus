@@ -238,6 +238,9 @@ for con = 1:numel(condis)
         disp(['Running Condition ', num2str(con), ' (', condis{con}, '), File ', num2str(file)])
         dat = matfile(strjoin(superCondis_dir{con}(file)));
         %trs =  1:size(dat.stim_tf,4);
+        % TODO: tr_keep is now always the full trial list (never shrunk by
+        % permanent removal), so using it directly here no longer applies
+        % tr_remove exclusion. Update to tr_keep_local = dat.tr_keep(~logical(dat.tr_remove)).
         trs = dat.tr_keep;
         %trs = 1:24;
         %datpower = zeros(length(chans(:,condiFileMice{con}(file))),length(delta),6001,length(trs));

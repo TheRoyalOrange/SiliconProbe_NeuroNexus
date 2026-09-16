@@ -102,6 +102,10 @@ for con = 1:numel(condis)
         disp(['Running Condition ', num2str(con), ' (', condis{con}, '), File ', num2str(file)])
         dat = matfile(strjoin(superCondis_dir{con}(file)));
         %trs = 1:25;
+        % TODO: tr_remove is now a same-length exclusion mask on tr_keep (not a
+        % short list of removed indices), so this no longer reconstructs the
+        % total trial count and will misbehave. Update to use tr_keep_local
+        % (tr_keep filtered by tr_remove, and optionally tr_remove_conditional).
         trs =  1:length(dat.tr_keep)+length(dat.tr_remove);
         %trs = dat.tr_keep;
                

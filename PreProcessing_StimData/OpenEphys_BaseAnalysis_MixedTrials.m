@@ -55,6 +55,11 @@
 %                    .poi (int vector) - which probes in the recording are to be analyzed?
 %                    .ProbeIds (cell array, 1 x probenum) - channel IDs within each probe (starts at 1 : number of channels on probe)
 %                    .Ch_Remove (cell array) - empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken)
+%                    .tr_remove_conditional (table, long format, columns Name/Filename/TrialIdx) -
+%                                     named, per-filename conditional trial-exclusion sets, one row
+%                                     per excluded trial. Populated via QuickTrialRemove.m. Combined
+%                                     with tr_remove (see below) at analysis time to build tr_keep_local;
+%                                     never modifies tr_keep or tr_remove themselves.
 %
 %     [Note: all following output files have the prefix animal-stim-]
 %     LFP.mat - mat file containing: 
@@ -64,13 +69,8 @@
 %                                     size[trials x trial length x channels] 
 %                  stim_times - vector of stimulus onset timepoints from raw
 %                               data.  size[trials]
-%                  tr_keep  -  vector of trials considered "good" according to 
-%                              user. By default, this contains all trials and
-%                              is modified later from a different script
-%                              size[trials]
-%                  tr_remove - the complement to tr_keep. By default this is
-%                              left empty and modified later by a differen
-%                              script size[empty]
+%                  tr_keep  - full list of trial indices extracted by preprocessing. Never edited after initialization. size[trials]
+%                  tr_remove - permanent trial-exclusion mask, position-aligned with tr_keep (1 = always exclude this trial). All zeros by default. size[trials]
 % 
 %    CSD_results.mat - mat file containing:
 %                        stim_CSD - cell array containing cell arrays with
@@ -78,13 +78,8 @@
 %                                   for each shank in each
 %                                   probe. size{1 x probe number}{number of
 %                                   shanks}[trial length x channels per shank]
-%                        tr_keep  - vector of trials considered "good" according to 
-%                                   user. By default, this contains all trials and
-%                                   is modified later from a different script
-%                                   size[trials]
-%                        tr_remove - the complement to tr_keep. By default this is
-%                                    left empty and modified later by a differen
-%                                    script size[empty]
+%                        tr_keep  - full list of trial indices extracted by preprocessing. Never edited after initialization. size[trials]
+%                        tr_remove - permanent trial-exclusion mask, position-aligned with tr_keep (1 = always exclude this trial). All zeros by default. size[trials]
 %                        
 % 
 %    TF_results.mat - mat file containing:
@@ -92,13 +87,8 @@
 %                                 of morlet wavelet convolution on LFP data
 %                                 data. size[channels x frequencies x time
 %                                 x trials]
-%                       tr_keep  - vector of trials considered "good" according to 
-%                                  user. By default, this contains all trials and
-%                                  is modified later from a different script
-%                                  size[trials]
-%                       tr_remove - the complement to tr_keep. By default this is
-%                                   left empty and modified later by a differen
-%                                   script size[empty]
+%                       tr_keep  - full list of trial indices extracted by preprocessing. Never edited after initialization. size[trials]
+%                       tr_remove - permanent trial-exclusion mask, position-aligned with tr_keep (1 = always exclude this trial). All zeros by default. size[trials]
 % 
 %   spiking_results.mat - mat file containing:
 %                           stim_spike_stimchunks - 3D array of MUA data,
@@ -107,13 +97,8 @@
 %                                                   sampling rate.
 %                                                   size[trials x 30kHz trial length x channels]
 %                                                 
-%                           tr_keep  - vector of trials considered "good" according to 
-%                                      user. By default, this contains all trials and
-%                                      is modified later from a different script
-%                                      size[trials]
-%                           tr_remove - the complement to tr_keep. By default this is
-%                                       left empty and modified later by a differen
-%                                       script size[empty]
+%                           tr_keep  - full list of trial indices extracted by preprocessing. Never edited after initialization. size[trials]
+%                           tr_remove - permanent trial-exclusion mask, position-aligned with tr_keep (1 = always exclude this trial). All zeros by default. size[trials]
 % 
 %    
 %    [Note: all output figures also have brain area added to prefix
@@ -399,18 +384,22 @@ ProbeInfo.Chans = chans; %number of recording channels
 ProbeInfo.TTLch = TTLch; %channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
 ProbeInfo.poi = poi; %which probes in the recording are to be analyzed?
 ProbeInfo.ProbeIds = probeids; %channel IDs within each probe (starts at 1 : number of channels on probe)
-ProbeInfo.Ch_Remove = {}; %empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken) 
+ProbeInfo.Ch_Remove = {}; %empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken)
+ProbeInfo.tr_remove_conditional = table('Size',[0,3], 'VariableTypes',{'string','string','double'}, 'VariableNames',{'Name','Filename','TrialIdx'}); %long-format table of named, per-filename conditional trial exclusions. Populated via QuickTrialRemove.m; combined with tr_remove at analysis time, never with tr_keep directly
 
 
 % SAVE PROBE INFO
 
 fname = sprintf([animal '-ProbeInfo']);
-save(fullfile([save_directory '\ProbeInfo\' fname]), 'ProbeInfo'); 
+save(fullfile([save_directory '\ProbeInfo\' fname]), 'ProbeInfo');
 
 % or load existing probe info
 else
     load(fullfile([save_directory '\ProbeInfo\' animal '-ProbeInfo.mat']))
     chans = ProbeInfo.Chans;
+    if ~isfield(ProbeInfo,'tr_remove_conditional')
+        ProbeInfo.tr_remove_conditional = table('Size',[0,3], 'VariableTypes',{'string','string','double'}, 'VariableNames',{'Name','Filename','TrialIdx'});
+    end
 end
 
 %% probe stuff for plotting later
@@ -536,8 +525,8 @@ for group = 1:size(stim_lfp_stimchunks_groups,1)
     stim_lfp_stimchunks = cat(1,stim_lfp_stimchunks,squeeze(stim_lfp_stimchunks_groups(group,:,:,:))); %with dimensions [trials of condition x epoch length x channels]
 end
 
-tr_remove = []; %list of trials to remove (recommended not to change at this point)
-tr_keep = 1:size(stim_lfp_stimchunks,1); %list of trials to keep (should be disjoint from tr_remove). Initialize as all trials
+tr_keep = 1:size(stim_lfp_stimchunks,1); %full list of trial indices extracted from this recording. Never edited after this point
+tr_remove = zeros(1,length(tr_keep)); %permanent trial-exclusion mask, position-aligned with tr_keep. 1 = always exclude this trial
 
 %% In case channel order from GUI is wrong, change it here
 if reorder == 1

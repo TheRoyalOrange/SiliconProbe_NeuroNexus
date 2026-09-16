@@ -91,6 +91,9 @@ for con = 1:numel(condis)
     for file = 1:numel(superCondis_dir{con})
         disp(['Running Condition ', num2str(con), ' (', condis{con}, '), File ', num2str(file)])
         dat = matfile(strjoin(superCondis_dir{con}(file)));
+        % TODO: tr_keep is now always the full trial list (never shrunk by
+        % permanent removal), so using it directly here no longer applies
+        % tr_remove exclusion. Update to tr_keep_local = dat.tr_keep(~logical(dat.tr_remove)).
         trs = dat.tr_keep;
                
         triallabel_condiname_con = cat(1,triallabel_condiname_con,repmat(repmat(condis{con},length(trs),1),length(chan_groups),1));
