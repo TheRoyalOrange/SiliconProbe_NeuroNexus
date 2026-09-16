@@ -1,42 +1,61 @@
-% %% Notes for Claude (and you, dear reader)
-% 
-% INPUTS:
-%   data - OpenEphys recordings in .Rhythm Data format. (a recording is
-%          synonomous with a consecutive series of trials.
-%          Sometimes you will start/stop recording without changing the
-%          file name or condition and this creates subfolders in that recording)
-%   
-%   animal - PROVIDED BY USER. string providing animal name (recommended naming format
-%            is YYYYMMDD-p# [dateOfRecording-postnatalDay]
-%   
-%   stim - PROVIDED BY USER. string providing name of the stimulus in this recording. 
-% 
-%   stim_index - PROVIDED BY USER. A vector with length=number of trials in
-%                recording, where each index is a number corresponding to
-%                a user defined list of conditions (i.e. each index takes
-%                on value 1:number of conditions in recording)
-%   
-%    other assorted parameters set by the user
-% 
-% OUTPUTS:
+% OpenEphys_BaseAnalysis_MixedTrials.m
+%
+% Description: Mixed-trials variant of OpenEphys_BaseAnalysis.m for a
+%   single continuous OpenEphys recording that contains multiple
+%   interleaved stimulus/trial conditions (rather than one condition per
+%   recording). Filters stimulus onset times down to only the trials
+%   belonging to the user-chosen condition (stim_times(stim_Index ==
+%   stim_num)), then runs the same pipeline as
+%   OpenEphys_BaseAnalysis.m: loads raw data, epochs peristimulus data
+%   for the selected condition, and (per user toggles) computes LFP,
+%   CSD, time-frequency (Morlet wavelet), and MUA/spiking results, with
+%   optional interactive bad-channel/trial removal and TF/spike-
+%   detection tuning. Processes one condition per run — rerun with a
+%   different stim_num/stim to process another condition from the same
+%   recording. This is the first script run per recording in the
+%   PreProcessing_StimData pipeline stage, for mixed-condition
+%   recordings specifically.
+%
+% Inputs:
+%   data (OpenEphys recording, .Rhythm Data format, loaded via
+%     uipickfiles) - a recording is a consecutive series of trials,
+%     here spanning multiple interleaved stimulus conditions. Starting/
+%     stopping a recording without changing the file name creates
+%     subfolders within it.
+%   animal (string) - PROVIDED BY USER. Animal identifier, recommended
+%     format YYYYMMDD-p# [dateOfRecording-postnatalDay]. Used as the
+%     prefix for all output files.
+%   stim (string) - PROVIDED BY USER. Name of the currently-selected
+%     stimulus condition (matching stim_num). Used as part of all
+%     output file names for this run.
+%   stim_Index (int vector, length = number of trials in the recording)
+%     - PROVIDED BY USER. Per-trial condition label; each entry takes a
+%       value 1:number of conditions in the recording.
+%   stim_num (int) - PROVIDED BY USER. Which condition (value in
+%     stim_Index) to extract and process on this run.
+%   other assorted parameters set by the user at the top of the script
+%     (load/save directories, which analyses to run, probe layout,
+%     number of probes, brain areas per probe, etc.)
+%
+% Outputs:
 %     [Note: ProbeInfo has the prefix animal-]
-%     
+%
 %    ProbeInfo.mat - struct containing several fields with information
 %                    relevant to the experiment, recording details, and plotting of data.
 %                    It is initialized in this script and can be further updated later. Has
 %                    the following fields:
-%                      
-%                    .Animal = animal; %animal name used for file labels and figures
-%                    .Areas = areas; %which brain areas are associated with each probe
-%                    .ProbeNum = probenum; %number of probes in the recording
-%                    .ProbeMaps = probemaps; %2d matrices reflecting shape of each probe and associated channel IDs in data (IDs correspond to rows of raw data)
-%                    .ChanIds = chan_ids; %vector of channel IDs in order
-%                    .Chans = chans; %number of recording channels
-%                    .TTLch = TTLch; %channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
-%                    .poi = poi; %which probes in the recording are to be analyzed?
-%                    .ProbeIds = probeids; %channel IDs within each probe (starts at 1 : number of channels on probe)
-%                    .Ch_Remove = {}; %empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken) 
-%  
+%
+%                    .Animal (string) - animal name used for file labels and figures
+%                    .Areas (cell array of strings, 1 x probenum) - which brain areas are associated with each probe
+%                    .ProbeNum (int) - number of probes in the recording
+%                    .ProbeMaps (cell array, 1 x probenum) - 2d matrices reflecting shape of each probe and associated channel IDs in data (IDs correspond to rows of raw data)
+%                    .ChanIds (int vector) - vector of channel IDs in order
+%                    .Chans (int) - number of recording channels
+%                    .TTLch (int) - channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
+%                    .poi (int vector) - which probes in the recording are to be analyzed?
+%                    .ProbeIds (cell array, 1 x probenum) - channel IDs within each probe (starts at 1 : number of channels on probe)
+%                    .Ch_Remove (cell array) - empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken)
+%
 %     [Note: all following output files have the prefix animal-stim-]
 %     LFP.mat - mat file containing: 
 %               stim_lfp_stimchunks - 3D array of lfp data split into
@@ -113,21 +132,28 @@
 %    Probe-Spikemean_results -  figure of mean MUA spike rate for each channel, 
 %                               plotted in shape of probe (ex. 8x8 probe has an 8x8 arrangement of
 %                               subplots). There is one per probe
-%    Probe-SpikeRaster_results -  figure of MUA raster for all trials for each channel, 
+%    Probe-SpikeRaster_results -  figure of MUA raster for all trials for each channel,
 %                                 plotted in shape of probe (ex. 8x8 probe has an 8x8 arrangement of
 %                                 subplots). There is one per probe
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
-% 
+%
+% Dependencies: None from this pipeline — this is the first script run
+%   per recording (PreProcessing_StimData stage), for recordings with
+%   multiple interleaved stimulus conditions specifically; it is the
+%   mixed-trials counterpart of OpenEphys_BaseAnalysis.m (use that one
+%   for a recording with a single stimulus condition). Requires
+%   OpenEphys MATLAB tools on the path (uipickfiles, Session/continuous
+%   data readers) plus the CSDallshank and slanCM helper functions.
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
 
 
 
