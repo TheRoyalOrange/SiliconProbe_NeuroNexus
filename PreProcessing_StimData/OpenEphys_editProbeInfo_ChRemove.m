@@ -1,35 +1,50 @@
-%% Notes for Claude (and you, of course, dear reader)
-% INPUTS: 
-%   [Note: ProbeInfo has prefix animal-]
-%       
-%       animal - PROVIDED BY USER. string providing animal name matching
-%                that of the probeinfo file you want to edit 
-%   
-%       ProbeInfo.mat - struct containing several fields with information
-%                       relevant to the experiment, recording details, and plotting of data.
-%                       It is initialized in this script and can be further updated later. Has
-%                       the following fields:
-%                      
-%                       .Animal = animal; %animal name used for file labels and figures
-%                       .Areas = areas; %which brain areas are associated with each probe
-%                       .ProbeNum = probenum; %number of probes in the recording
-%                       .ProbeMaps = probemaps; %2d matrices reflecting shape of each probe and associated channel IDs in data (IDs correspond to rows of raw data)
-%                       .ChanIds = chan_ids; %vector of channel IDs in order
-%                       .Chans = chans; %number of recording channels
-%                       .TTLch = TTLch; %channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
-%                       .poi = poi; %which probes in the recording are to be analyzed?
-%                       .ProbeIds = probeids; %channel IDs within each probe (starts at 1 : number of channels on probe)
-%                       .Ch_Remove = {}; %empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken) 
-%  
-% 
-%  OUTPUTS: 
+% OpenEphys_editProbeInfo_ChRemove.m
 %
-%       ProbeInfo.Ch_Remove - an edited .Ch_Remove, with the values specified in badchans. Size {1 x number of probes}[number of channels listed for probe] 
-% 
-% 
-% 
-% 
-% 
+% Description: Downstream, standalone utility to record which channels
+%   should be excluded from an animal's probe(s) (e.g. outside brain,
+%   broken). Loads that animal's existing ProbeInfo.mat, overwrites its
+%   .Ch_Remove field with a user-specified per-probe channel list
+%   (badchans), and saves the struct back to the same file. Does not
+%   itself alter any LFP/CSD/TF/spiking result files — it only records
+%   which channels downstream analyses should treat as excluded.
+%
+% Inputs:
+%   badchans (cell array, 1 x number of probes; each cell a column
+%     vector of channel IDs) - PROVIDED BY USER (edited directly in the
+%     script). Channels to exclude per probe, using ChanIds from the
+%     existing ProbeInfo.
+%   animal (string) - PROVIDED BY USER via input dialog at runtime.
+%     Animal name matching the ProbeInfo file to edit.
+%   [Note: ProbeInfo has prefix animal-]
+%   ProbeInfo.mat (struct, loaded from disk) - struct containing several
+%     fields with information relevant to the experiment, recording
+%     details, and plotting of data. Expected to already exist (created
+%     by OpenEphys_BaseAnalysis.m or a variant). Has the following
+%     fields:
+%
+%       .Animal (string) - animal name used for file labels and figures
+%       .Areas (cell array of strings, 1 x probenum) - which brain areas are associated with each probe
+%       .ProbeNum (int) - number of probes in the recording
+%       .ProbeMaps (cell array, 1 x probenum) - 2d matrices reflecting shape of each probe and associated channel IDs in data (IDs correspond to rows of raw data)
+%       .ChanIds (int vector) - vector of channel IDs in order
+%       .Chans (int) - number of recording channels
+%       .TTLch (int) - channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
+%       .poi (int vector) - which probes in the recording are to be analyzed?
+%       .ProbeIds (cell array, 1 x probenum) - channel IDs within each probe (starts at 1 : number of channels on probe)
+%       .Ch_Remove (cell array) - channels to exclude per probe; edited by this script
+%
+% Outputs:
+%   ProbeInfo.mat (overwritten in place) - same struct as above, with
+%     .Ch_Remove (cell array, 1 x number of probes; each cell a vector
+%     of channel IDs) set to badchans.
+%
+% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the _Bundled /
+%   _MixedTrials variant) to have already been run for this animal,
+%   producing the ProbeInfo.mat file this script loads and overwrites.
+%
+%
+%
+%
 %%
 %first, open whatever figures you would like to use to make this decision.
 
