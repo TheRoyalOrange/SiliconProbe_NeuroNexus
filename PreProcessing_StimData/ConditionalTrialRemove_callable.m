@@ -126,16 +126,13 @@
 %     <full_filename>-CSD_results.mat, and
 %     <full_filename>_TF_results.mat (note: no dash before
 %     "_TF_results", unlike the other three - matches how
-%     OpenEphys_BaseAnalysis.m actually names that file).
-%     TESTING: these four save() calls are currently commented out, and
-%     the rows that would have been written are printed to the console
-%     instead - re-enable them once verified.
+%     OpenEphys_BaseAnalysis.m actually names that file). Also logged to
+%     the console.
 %   (side effect, not a return value) tr_conditional_master - the
 %     Name/Animal/Filename row for this call is added if not already
 %     present, in <save_directory>\tr_conditional_master.mat. Updated on
-%     every call, including the "match found, skip" path. TESTING: this
-%     save() call is also currently commented out, printed instead -
-%     re-enable together with the four above once verified.
+%     every call, including the "match found, skip" path. Also logged to
+%     the console.
 %
 % Dependencies: Expects OpenEphys_BaseAnalysis.m (or the _Bundled /
 %   _MixedTrials variant) to have already been run for this
@@ -291,14 +288,14 @@ else
 end
 tr_remove_conditional = [tr_remove_conditional; newRows];
 
-%% TESTING: print what would be saved instead of saving, so nothing on disk is overwritten
-fprintf('\n--- ConditionalTrialRemove_callable: rows that would be added for %s, condition ''%s'' ---\n', full_filename, tr_conditional);
+%% save the new selection into all four result files, and log what was written
+fprintf('\n--- ConditionalTrialRemove_callable: rows added for %s, condition ''%s'' ---\n', full_filename, tr_conditional);
 disp(newRows);
 
-% save(fullfile([save_directory '\Spiking\' animal '\' full_filename '-spiking_results.mat']), 'tr_remove_conditional', '-append'); % TESTING: disabled, see note above
-% save(fullfile([save_directory '\LFP\' animal '\' full_filename '-LFP.mat']), 'tr_remove_conditional', '-append'); % TESTING: disabled, see note above
-% save(fullfile([save_directory '\CSD\' animal '\' full_filename '-CSD_results.mat']), 'tr_remove_conditional', '-append'); % TESTING: disabled, see note above
-% save(fullfile([save_directory '\TF\' animal '\' full_filename '_TF_results.mat']), 'tr_remove_conditional', '-append'); % TESTING: disabled, see note above
+save(fullfile([save_directory '\Spiking\' animal '\' full_filename '-spiking_results.mat']), 'tr_remove_conditional', '-append');
+save(fullfile([save_directory '\LFP\' animal '\' full_filename '-LFP.mat']), 'tr_remove_conditional', '-append');
+save(fullfile([save_directory '\CSD\' animal '\' full_filename '-CSD_results.mat']), 'tr_remove_conditional', '-append');
+save(fullfile([save_directory '\TF\' animal '\' full_filename '_TF_results.mat']), 'tr_remove_conditional', '-append');
 
 updateTrConditionalMaster(save_directory, tr_conditional, animal, full_filename);
 
@@ -353,8 +350,8 @@ newRow = table(string(tr_conditional), string(animal), string(full_filename), ..
     'VariableNames', {'Name','Animal','Filename'});
 tr_conditional_master = [tr_conditional_master; newRow];
 
-%% TESTING: print what would be saved instead of saving, so nothing on disk is overwritten
-fprintf('--- tr_conditional_master: would add %s / %s / %s ---\n', tr_conditional, animal, full_filename);
-% save(masterFile, 'tr_conditional_master'); % TESTING: disabled, see note above
+%% save the master index, and log what was added
+fprintf('--- tr_conditional_master: added %s / %s / %s ---\n', tr_conditional, animal, full_filename);
+save(masterFile, 'tr_conditional_master');
 
 end
