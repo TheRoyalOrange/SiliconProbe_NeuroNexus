@@ -62,6 +62,13 @@
 %   save_directory (string, optional) - base path containing the LFP/
 %     Spiking/ProbeInfo subfolders. Defaults to
 %     'E:\Roy\Processed Silicon Probe Data'.
+%   master_filename (string, optional) - filename (not a full path) of
+%     the master tracking file within save_directory - see
+%     updateTrConditionalMaster below. Defaults to
+%     'tr_conditional_master.mat'. Exists so a caller can point at a
+%     throwaway/test master file (e.g. when dry-running against test
+%     data) without touching the real one - existing callers that omit
+%     it are unaffected.
 %   tr_keep (int vector, trials), tr_remove (0/1 vector, same length as
 %     tr_keep), tr_remove_conditional (table, columns Name/TrialIdx;
 %     defaults to an empty table if missing from the file. TrialIdx may
@@ -130,9 +137,10 @@
 %     the console.
 %   (side effect, not a return value) tr_conditional_master - the
 %     Name/Animal/Filename row for this call is added if not already
-%     present, in <save_directory>\tr_conditional_master.mat. Updated on
-%     every call, including the "match found, skip" path. Also logged to
-%     the console.
+%     present, in <save_directory>\<master_filename> (see Inputs -
+%     defaults to tr_conditional_master.mat). Updated on every call,
+%     including the "match found, skip" path. Also logged to the
+%     console.
 %
 % Dependencies: Expects OpenEphys_BaseAnalysis.m (or the _Bundled /
 %   _MixedTrials variant) to have already been run for this
@@ -143,7 +151,11 @@
 %   issued instead) the per-probe lfp_results.fig files under
 %   AnimalFigures to have been saved for this animal/condition.
 
-function ProbeInfo = ConditionalTrialRemove_callable(animal, condition, tr_conditional, fs, ProbeInfo, save_directory)
+function ProbeInfo = ConditionalTrialRemove_callable(animal, condition, tr_conditional, fs, ProbeInfo, save_directory, master_filename)
+
+if nargin < 7 || isempty(master_filename)
+    master_filename = 'tr_conditional_master.mat';
+end
 
 if nargin < 6 || isempty(save_directory)
     save_directory = 'E:\Roy\Processed Silicon Probe Data';
@@ -193,7 +205,7 @@ end
 %% if this named condition already has a recorded trial set for this file, skip everything below (loop-friendly: no dialogs, no figures, no save)
 if any(strcmp(tr_remove_conditional.Name, tr_conditional))
     fprintf('Match found for ''%s'' in %s - skipping.\n', tr_conditional, full_filename);
-    updateTrConditionalMaster(save_directory, tr_conditional, animal, full_filename);
+    updateTrConditionalMaster(save_directory, master_filename, tr_conditional, animal, full_filename);
     return
 end
 % uiwait blocks script execution until the user clicks OK (or closes the box);
@@ -297,7 +309,7 @@ save(fullfile([save_directory '\LFP\' animal '\' full_filename '-LFP.mat']), 'tr
 save(fullfile([save_directory '\CSD\' animal '\' full_filename '-CSD_results.mat']), 'tr_remove_conditional', '-append');
 save(fullfile([save_directory '\TF\' animal '\' full_filename '_TF_results.mat']), 'tr_remove_conditional', '-append');
 
-updateTrConditionalMaster(save_directory, tr_conditional, animal, full_filename);
+updateTrConditionalMaster(save_directory, master_filename, tr_conditional, animal, full_filename);
 
 end
 
@@ -325,13 +337,16 @@ uiwait(fig);
     end
 end
 
-function updateTrConditionalMaster(save_directory, tr_conditional, animal, full_filename)
-% Keeps <save_directory>\tr_conditional_master.mat in sync: a single,
-% small index (table, columns Name/Animal/Filename - no TrialIdx, that
-% stays in the per-file tables) of which tr_conditional names exist and
-% which animal/filename pairs each has been applied to, so it can be
-% scanned on its own without opening every per-recording result file.
-masterFile = fullfile([save_directory '\tr_conditional_master.mat']);
+function updateTrConditionalMaster(save_directory, master_filename, tr_conditional, animal, full_filename)
+% Keeps <save_directory>\<master_filename> in sync (normally
+% tr_conditional_master.mat - see master_filename in this file's header
+% doc): a single, small index (table, columns Name/Animal/Filename - no
+% TrialIdx, that stays in the per-file tables) of which tr_conditional
+% names exist and which animal/filename pairs each has been applied to,
+% so it can be scanned on its own without opening every per-recording
+% result file. The variable stored inside the file is always named
+% tr_conditional_master regardless of master_filename.
+masterFile = fullfile(save_directory, master_filename);
 if isfile(masterFile)
     master_dat = load(masterFile, 'tr_conditional_master');
     tr_conditional_master = master_dat.tr_conditional_master;
