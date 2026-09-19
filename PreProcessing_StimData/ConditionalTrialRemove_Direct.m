@@ -1,4 +1,4 @@
-% ConditionalTrialRemove_RunBatch.m
+% ConditionalTrialRemove_Direct.m
 %
 % Description: Standalone driver script that batch-applies
 %   ConditionalTrialRemove_callable.m across a manually chosen set of
@@ -8,8 +8,9 @@
 %   animal/condition selections) before looping. As close to the very
 %   start of the script as possible (right after the user-set variables,
 %   before anything else runs), opens a non-modal uitable of the
-%   existing tr_conditional_master.mat index so the user can scan what
-%   conditional names already exist before committing to tr_conditional.
+%   existing master index (master_filename, normally
+%   tr_conditional_master.mat) so the user can scan what conditional
+%   names already exist before committing to tr_conditional.
 %   After the user confirms tr_conditional, checks whether that name
 %   already exists in the master index and, if so, warns and asks
 %   whether to continue (since re-running the same name on files it has
@@ -45,6 +46,15 @@
 %     ConditionalTrialRemove_callable.m takes it as an input; defaults to
 %     'E:\Roy\Processed Silicon Probe Data', matching that function's own
 %     default.
+%   master_filename (string) - PROVIDED BY USER, set just below the main
+%     USER-SET VARIABLES block (not inside it) right before its first
+%     use. Filename (not a full path) of the master tracking file within
+%     save_directory, forwarded to ConditionalTrialRemove_callable.m and
+%     used by this script's own master-list display/existence-check
+%     below. Normally 'tr_conditional_master.mat' (the real master
+%     index) - for a test run, temporarily change it to a different
+%     filename (e.g. 'themastertester.mat') so a test run cannot alter
+%     the real index; see the comment at its assignment below.
 %   (side effect) user picks, per animal in animal_inc, which condition
 %     files under <save_directory>\LFP\<animal> to include, via
 %     uipickfiles. INFERRED DATA CONTRACT: each selected file is named
@@ -62,33 +72,37 @@
 %     {animals}{filenames for animal} shape.
 %   (side effect, via ConditionalTrialRemove_callable.m) tr_remove_conditional
 %     rows written into each selected animal/condition's LFP/spiking/
-%     CSD/TF result files, and tr_conditional_master.mat updated - see
-%     ConditionalTrialRemove_callable.m's own header for details.
+%     CSD/TF result files, and <save_directory>\<master_filename> updated
+%     - see ConditionalTrialRemove_callable.m's own header for details.
 %
 % Dependencies: ConditionalTrialRemove_callable.m (same folder);
 %   uipickfiles (must be on the MATLAB path - already used elsewhere in
 %   this repo, e.g. Summarize_MultiAnimal\SummaryAnalysis_MultiMouseTF.m);
 %   expects OpenEphys_BaseAnalysis.m (or a variant) to have already been
-%   run for every animal/condition selected.
+%   run for every animal/condition selected. For testing this script's
+%   own loop/wiring without touching real data, see
+%   ConditionalTrialRemove_callable_test.m (same folder) and the
+%   commented-out swap in the loop below.
 
 %% ============ USER-SET VARIABLES - fill these in by hand ============
-tr_conditional = '';   % name of the trial-exclusion condition to apply, e.g. 'whisker_twitch_artifact'
-animal_inc = {         % animals to include this run
-    ''
+tr_conditional = 'masterblaster';   % name of the trial-exclusion condition to apply, e.g. 'whisker_twitch_artifact'
+animal_inc = {'20260226-p12'         % animals to include this run
+    '20260423-p12'
     };
 fs = 30000;             % sampling rate of the original recording (Hz)
 save_directory = 'E:\Roy\Processed Silicon Probe Data';
 %% =====================================================================
 
-%% show the existing tr_conditional_master index so the user can scan before proceeding
-displayTrConditionalMaster(save_directory);
+%% show the existing master index so the user can scan before proceeding
+master_filename = 'tr_conditional_master.mat'; % the real master index - for a test run, temporarily change this to a different filename (e.g. 'themastertester.mat') so you don't alter the real one
+displayTrConditionalMaster(save_directory, master_filename);
 
 %% now validate that the user actually filled in the required variables above
 if isempty(tr_conditional) || ~(ischar(tr_conditional) || isstring(tr_conditional))
-    error('ConditionalTrialRemove_RunBatch:EmptyConditional', 'Fill in tr_conditional before running.');
+    error('ConditionalTrialRemove_Direct:EmptyConditional', 'Fill in tr_conditional before running.');
 end
 if isempty(animal_inc) || ~iscell(animal_inc) || any(cellfun(@isempty, animal_inc))
-    error('ConditionalTrialRemove_RunBatch:EmptyAnimalInc', 'Fill in animal_inc (cell array of animal names) before running.');
+    error('ConditionalTrialRemove_Direct:EmptyAnimalInc', 'Fill in animal_inc (cell array of animal names) before running.');
 end
 
 %% confirm tr_conditional with the user
@@ -100,16 +114,16 @@ if ~strcmp(answer, 'Yes')
 end
 
 %% warn if this tr_conditional name already exists in the master index
-masterFile = fullfile(save_directory, 'tr_conditional_master.mat');
+masterFile = fullfile(save_directory, master_filename);
 if isfile(masterFile)
     master_dat = load(masterFile, 'tr_conditional_master');
     existingRows = strcmp(master_dat.tr_conditional_master.Name, tr_conditional);
     if any(existingRows)
         n = sum(existingRows);
-        existMsg = sprintf(['tr_conditional ''%s'' already exists in tr_conditional_master.mat ' ...
+        existMsg = sprintf(['tr_conditional ''%s'' already exists in %s ' ...
             '(%d animal/filename pair(s) already recorded).\n\nNote: already-recorded pairs cannot ' ...
             'be re-edited - ConditionalTrialRemove_callable.m will just skip them.\n\nContinue anyway?'], ...
-            tr_conditional, n);
+            tr_conditional, master_filename, n);
         answer = nonModalConfirm(existMsg, 'tr_conditional already exists');
         if ~strcmp(answer, 'Yes')
             disp('Aborted by user - tr_conditional already exists in the master index.');
@@ -124,7 +138,7 @@ for a = 1:numel(animal_inc)
     animal = animal_inc{a};
     animalLFPdir = fullfile(save_directory, 'LFP', animal);
     if ~isfolder(animalLFPdir)
-        warning('ConditionalTrialRemove_RunBatch:AnimalFolderNotFound', ...
+        warning('ConditionalTrialRemove_Direct:AnimalFolderNotFound', ...
             'LFP folder not found for animal ''%s'': %s - skipping.', animal, animalLFPdir);
         animal_condition_files{a} = {};
         continue
@@ -134,7 +148,7 @@ for a = 1:numel(animal_inc)
         sprintf('Choose ''%s'' condition file(s) for %s', tr_conditional, animal));
 
     if ~iscell(picked) % uipickfiles returns 0 if the user cancels
-        warning('ConditionalTrialRemove_RunBatch:NoFilesPicked', ...
+        warning('ConditionalTrialRemove_Direct:NoFilesPicked', ...
             'No files picked for animal ''%s'' - skipping.', animal);
         animal_condition_files{a} = {};
         continue
@@ -148,7 +162,7 @@ for a = 1:numel(animal_inc)
         if startsWith(base, prefix) && endsWith(base, suffix)
             conditions{f} = base(numel(prefix)+1 : end-numel(suffix));
         else
-            warning('ConditionalTrialRemove_RunBatch:UnexpectedFilename', ...
+            warning('ConditionalTrialRemove_Direct:UnexpectedFilename', ...
                 ['Picked file ''%s'' does not match the expected <animal>-<condition>-LFP.mat ' ...
                  'pattern for animal ''%s'' - skipping this file.'], base, animal);
             conditions{f} = '';
@@ -163,30 +177,34 @@ for a = 1:numel(animal_inc)
     conditions = animal_condition_files{a};
     ProbeInfo = []; % reloaded once per animal (via ConditionalTrialRemove_callable.m's own optional ProbeInfo input/output), then reused across this animal's conditions instead of re-loading per condition
     for c = 1:numel(conditions)
-        ProbeInfo = ConditionalTrialRemove_callable(animal, conditions{c}, tr_conditional, fs, ProbeInfo, save_directory);
+        % TESTING: comment out the real call below and uncomment the _test call to dry-run this
+        % script's loop/wiring without touching any real LFP/Spiking/CSD/TF result files - see
+        % ConditionalTrialRemove_callable_test.m's header for what it does instead.
+        ProbeInfo = ConditionalTrialRemove_callable(animal, conditions{c}, tr_conditional, fs, ProbeInfo, save_directory, master_filename);
+        % ProbeInfo = ConditionalTrialRemove_callable_test(animal, conditions{c}, tr_conditional, fs, ProbeInfo, save_directory, master_filename);
     end
 end
 
-disp('ConditionalTrialRemove_RunBatch: done.');
+disp('ConditionalTrialRemove_Direct: done.');
 
 %% ------------------------- local functions -------------------------
 
-function displayTrConditionalMaster(save_directory)
-% Opens a non-modal uitable of tr_conditional_master.mat (sorted by
-% Name, then Animal, then Filename) so the user can scan which
-% tr_conditional names already exist, and on which animal/filename
+function displayTrConditionalMaster(save_directory, master_filename)
+% Opens a non-modal uitable of <save_directory>\<master_filename>
+% (sorted by Name, then Animal, then Filename) so the user can scan
+% which tr_conditional names already exist, and on which animal/filename
 % pairs, before committing to a tr_conditional above. Left open (not
 % uiwait'd) so it stays visible/referenceable through the rest of the
 % script's dialogs.
-masterFile = fullfile(save_directory, 'tr_conditional_master.mat');
+masterFile = fullfile(save_directory, master_filename);
 if ~isfile(masterFile)
-    disp('No tr_conditional_master.mat found yet - this will be the first tr_conditional recorded.');
+    fprintf('No %s found yet - this will be the first tr_conditional recorded.\n', master_filename);
     return
 end
 master_dat = load(masterFile, 'tr_conditional_master');
 sortedMaster = sortrows(master_dat.tr_conditional_master, {'Name','Animal','Filename'});
 
-fig = figure('Name', 'tr_conditional_master (existing conditionals)', 'NumberTitle', 'off', ...
+fig = figure('Name', sprintf('%s (existing conditionals)', master_filename), 'NumberTitle', 'off', ...
     'MenuBar', 'none', 'ToolBar', 'none', 'Position', [200 200 640 400]);
 uitable(fig, 'Data', table2cell(sortedMaster), 'ColumnName', sortedMaster.Properties.VariableNames, ...
     'Units', 'normalized', 'Position', [0 0 1 1]);
