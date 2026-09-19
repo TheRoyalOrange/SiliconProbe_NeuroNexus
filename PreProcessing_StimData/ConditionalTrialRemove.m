@@ -1,4 +1,4 @@
-% ConditionalTrialRemove_Direct.m
+% ConditionalTrialRemove.m
 %
 % Description: Standalone driver script that batch-applies
 %   ConditionalTrialRemove_callable.m across a manually chosen set of
@@ -99,10 +99,10 @@ displayTrConditionalMaster(save_directory, master_filename);
 
 %% now validate that the user actually filled in the required variables above
 if isempty(tr_conditional) || ~(ischar(tr_conditional) || isstring(tr_conditional))
-    error('ConditionalTrialRemove_Direct:EmptyConditional', 'Fill in tr_conditional before running.');
+    error('ConditionalTrialRemove:EmptyConditional', 'Fill in tr_conditional before running.');
 end
 if isempty(animal_inc) || ~iscell(animal_inc) || any(cellfun(@isempty, animal_inc))
-    error('ConditionalTrialRemove_Direct:EmptyAnimalInc', 'Fill in animal_inc (cell array of animal names) before running.');
+    error('ConditionalTrialRemove:EmptyAnimalInc', 'Fill in animal_inc (cell array of animal names) before running.');
 end
 
 %% confirm tr_conditional with the user
@@ -138,7 +138,7 @@ for a = 1:numel(animal_inc)
     animal = animal_inc{a};
     animalLFPdir = fullfile(save_directory, 'LFP', animal);
     if ~isfolder(animalLFPdir)
-        warning('ConditionalTrialRemove_Direct:AnimalFolderNotFound', ...
+        warning('ConditionalTrialRemove:AnimalFolderNotFound', ...
             'LFP folder not found for animal ''%s'': %s - skipping.', animal, animalLFPdir);
         animal_condition_files{a} = {};
         continue
@@ -148,7 +148,7 @@ for a = 1:numel(animal_inc)
         sprintf('Choose ''%s'' condition file(s) for %s', tr_conditional, animal));
 
     if ~iscell(picked) % uipickfiles returns 0 if the user cancels
-        warning('ConditionalTrialRemove_Direct:NoFilesPicked', ...
+        warning('ConditionalTrialRemove:NoFilesPicked', ...
             'No files picked for animal ''%s'' - skipping.', animal);
         animal_condition_files{a} = {};
         continue
@@ -162,7 +162,7 @@ for a = 1:numel(animal_inc)
         if startsWith(base, prefix) && endsWith(base, suffix)
             conditions{f} = base(numel(prefix)+1 : end-numel(suffix));
         else
-            warning('ConditionalTrialRemove_Direct:UnexpectedFilename', ...
+            warning('ConditionalTrialRemove:UnexpectedFilename', ...
                 ['Picked file ''%s'' does not match the expected <animal>-<condition>-LFP.mat ' ...
                  'pattern for animal ''%s'' - skipping this file.'], base, animal);
             conditions{f} = '';
@@ -185,7 +185,7 @@ for a = 1:numel(animal_inc)
     end
 end
 
-disp('ConditionalTrialRemove_Direct: done.');
+disp('ConditionalTrialRemove: done.');
 
 %% ------------------------- local functions -------------------------
 
