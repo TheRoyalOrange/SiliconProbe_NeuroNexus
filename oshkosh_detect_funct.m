@@ -98,6 +98,19 @@ function [oscillations, snippets, probeSnippets] = oshkosh_detect_funct(animal, 
 %         beyond what was strictly asked for the chEvent->prbEvent split -
 %         without it there's no way to map prbEvent_*{p} back to which
 %         real probe ID p refers to.
+%       .chan_probe (int vector, 1 x Nchan, indexed like chanals) - which
+%         position in oscillations.probes each channel belongs to (e.g.
+%         chan_probe(5)==2 means chanals(5) is on oscillations.probes(2)).
+%         NOTE: added beyond what was strictly asked, for
+%         prbEvent_chParticipation below - without it there's no way to
+%         know which probe's prbEvent_timestamps a channel's participation
+%         mask refers to.
+%       .stim_times (cell, 1 x Nfiles, indexed by position in
+%         oscillations.files) - absolute sample indices (1kHz, local to
+%         that file) where the stimulus TTL was high, or [] if this file
+%         had no detected TTL activity. NOTE: added so downstream
+%         visualization (oscillation_plotEvents.m) can mark stim times on
+%         a plotted event even when the event itself doesn't overlap one.
 %     chEvent fields (cell array, 1 x Nchan, indexed by position in
 %     oscillations.chanals - one detected event per channel, independent
 %     of every other channel):
@@ -117,6 +130,19 @@ function [oscillations, snippets, probeSnippets] = oshkosh_detect_funct(animal, 
 %       .chEvent_index (cell) - per-file event ordinal number
 %       .chEvent_during_stim (cell) - logical, whether the event overlaps
 %         a detected stimulus TTL pulse
+%       .chEvent_condition (cell) - cell array of condition-name strings
+%         (one per event, same order/shape as chEvent_file_index), parsed
+%         from the data_directory entry's folder name (convention:
+%         <animal>-<condition>, e.g. "spon", "whisker" - taken as
+%         everything after the LAST occurrence of "<animal>-" in the full
+%         path, since animal itself may recur as a parent folder name)
+%       .prbEvent_chParticipation (cell) - logical column vector, the same
+%         length as oscillations.prbEvent_timestamps{oscillations.chan_probe(ch)}
+%         (i.e. one entry per prbEvent that channel's own probe has,
+%         across all files), true wherever this channel has at least one
+%         chEvent overlapping that prbEvent. Despite the chEvent-style
+%         indexing (1 x Nchan, by channel), the name is prbEvent_-prefixed
+%         since it describes prbEvent participation, not a chEvent itself.
 %     prbEvent fields (cell array, 1 x length(probes), indexed by position
 %     in oscillations.probes - one detected event per probe, being the
 %     union of that probe's own channels' chEvent windows, merged whenever
@@ -126,8 +152,9 @@ function [oscillations, snippets, probeSnippets] = oshkosh_detect_funct(animal, 
 %       .prbEvent_timestamps, .prbEvent_ext_timestamps,
 %       .prbEvent_neg_timestamps, .prbEvent_durations,
 %       .prbEvent_ext_durations, .prbEvent_file_index, .prbEvent_index,
-%       .prbEvent_during_stim - as above, one per probe instead of per
-%         channel.
+%       .prbEvent_during_stim, .prbEvent_condition - as above, one per
+%         probe instead of per channel (.prbEvent_condition parsed the
+%         same way as .chEvent_condition above).
 %       .prbEvent_peaks / .prbEvent_peakNormedPower - computed by
 %         rescanning ALL of that probe's channels' data_filt/data_filt_rms
 %         over the merged window (peak = position of the single
@@ -202,7 +229,9 @@ stimCh = ProbeInfo.TTLch;
 oscillations.chanals = chanals;
 oscillations.exclude_channels = baddies;
 oscillations.probes = probes;
+oscillations.chan_probe = chan_probe;
 oscillations.files = data_directory;
+oscillations.stim_times = cell(size(data_directory,1),1);
 
 snippets.chanals = chanals;
 snippets.files = data_directory;
@@ -233,6 +262,8 @@ end
  oscillations.chEvent_file_index = cell(length(chanals),1);
  oscillations.chEvent_index = cell(length(chanals),1);
  oscillations.chEvent_during_stim = cell(length(chanals),1);
+ oscillations.chEvent_condition = cell(length(chanals),1);
+ oscillations.prbEvent_chParticipation = cell(length(chanals),1);
 
  oscillations.prbEvent_timestamps = cell(length(probes),1);
  oscillations.prbEvent_ext_timestamps = cell(length(probes),1);
@@ -244,6 +275,7 @@ end
  oscillations.prbEvent_file_index = cell(length(probes),1);
  oscillations.prbEvent_index = cell(length(probes),1);
  oscillations.prbEvent_during_stim = cell(length(probes),1);
+ oscillations.prbEvent_condition = cell(length(probes),1);
 
 
 
@@ -287,6 +319,19 @@ if mean(normbineTTL) < .8
 else
     stim_times = [];
 end
+oscillations.stim_times{file} = stim_times;
+
+%% figure out which condition this file is (folder name convention: <animal>-<condition>)
+prefix = [animal '-'];
+occurrences = strfind(data_directory{file}, prefix);
+if isempty(occurrences)
+    error('oshkosh_detect_funct:UnexpectedFolderName', ...
+        'Could not find "%s" anywhere in data_directory{%d} ("%s") to determine the condition name.', ...
+        prefix, file, data_directory{file});
+end
+last_occurrence = occurrences(end);
+condition = data_directory{file}(last_occurrence+numel(prefix):end);
+
 %% bandpass
 
 data = data(chanals,:);
@@ -294,7 +339,7 @@ data = data(chanals,:);
 clear data_filt
 for i = 1:length(chanals)
   data_filt(i,:) = bandpass(data(i,:),fq_range,fs, 'ImpulseResponse','iir');
-  disp(i);
+  %disp(i);
 end
 
 %for i = 1:length(chanals)
@@ -375,7 +420,7 @@ end
 for ch = 1:length(chanals)
 
     input_data = data_filt_rms(ch,:);
-    thresholded = input_data > (data_med(ch)+(data_MAD(ch)*2)); %this is effectively the lower threshold, later is a step that requires a peak above 3 MAD
+    thresholded = input_data > (data_med(ch)+(data_MAD(ch)*3)); %this is effectively the lower threshold, later is a step that requires a peak above 3 MAD
 
 %%
 
@@ -427,7 +472,7 @@ for ch = 1:length(chanals)
             for i = 1 : size(secondPass, 1)
                 maxValue_rel = max(input_data([secondPass(i, 1) : secondPass(i, 2)]));
                 %maxValue_abs = max(convolvedSignal([secondPass(i, 1) : secondPass(i, 2)]));
-                if maxValue_rel > data_med+(data_MAD*3) %rel_thresholds(2) || maxValue_abs > abs_thresholds(2)
+                if maxValue_rel > data_med+(data_MAD*4) %rel_thresholds(2) || maxValue_abs > abs_thresholds(2)
                     thirdPass = [thirdPass ; secondPass(i, :)];
                     peakNormalizedPower = [peakNormalizedPower ; maxValue_rel];
                     %peakAbsPower = [peakAbsPower ; maxValue_abs];
@@ -448,7 +493,7 @@ for ch = 1:length(chanals)
                 oscillations_ch = [(thirdPass(:,1)) (peakPosition) ...
                     (thirdPass(:,2)) peakNormalizedPower];
                 duration = oscillations_ch(:,3) - oscillations_ch(:,1);
-                oscillations_ch(duration < 300) = NaN;%durations(2), :) = NaN;
+                oscillations_ch(duration < 500) = NaN;%durations(2), :) = NaN;
                 oscillations_ch = oscillations_ch((all((~ isnan(oscillations_ch)), 2)), :);
 
                 %remove bouts too close to the edge
@@ -485,11 +530,12 @@ for ch = 1:length(chanals)
                 oscillations.chEvent_durations{ch} = [oscillations.chEvent_durations{ch}; osc(:, 3)-osc(:,1)];
                 oscillations.chEvent_ext_durations{ch} = [oscillations.chEvent_ext_durations{ch}; ext_osc(:,2)-ext_osc(:,1)];
                 oscillations.chEvent_file_index{ch} = [oscillations.chEvent_file_index{ch}; repmat(file,size(osc,1),1)];
+                oscillations.chEvent_condition{ch} = [oscillations.chEvent_condition{ch}; repmat({condition},size(osc,1),1)];
                 %oscillations.negevent_file_index{ch} = [oscillations.negevent_file_index{ch}; repmat(file,size(neg_osc,1),1)];
                 oscillations.chEvent_index{ch} = [oscillations.chEvent_index{ch}; [1:size(osc,1)]'];
 
                 for evnt = 1:size(osc,1)
-                oscillations.chEvent_during_stim{ch} = [oscillations.chEvent_during_stim{ch}; max(ismember(stim_times, osc(evnt,1):osc(evnt,3)))];
+                oscillations.chEvent_during_stim{ch} = [oscillations.chEvent_during_stim{ch}; any(ismember(stim_times, osc(evnt,1):osc(evnt,3)))];
                 end
 
                 clear ext_osc neg_osc
@@ -514,7 +560,7 @@ for ch = 1:length(chanals)
 end
 
 %% find probe events (prbEvent): union of this probe's channels' chEvent windows, merging gaps under 300ms
-prb_gap_samples = 300/1000*fs; %300ms silence gap between probe events (see header NOTE on this constant)
+prb_gap_samples = 500/1000*fs; %300ms silence gap between probe events (see header NOTE on this constant)
 
 for p = 1:length(probes)
     probe_chans_idx = find(chan_probe == p);
@@ -556,8 +602,9 @@ for p = 1:length(probes)
             oscillations.prbEvent_durations{p} = [oscillations.prbEvent_durations{p}; prbFirstPass(m,2)-prbFirstPass(m,1)];
             oscillations.prbEvent_ext_durations{p} = [oscillations.prbEvent_ext_durations{p}; prb_ext(m,2)-prb_ext(m,1)];
             oscillations.prbEvent_file_index{p} = [oscillations.prbEvent_file_index{p}; file];
+            oscillations.prbEvent_condition{p} = [oscillations.prbEvent_condition{p}; {condition}];
             oscillations.prbEvent_index{p} = [oscillations.prbEvent_index{p}; m];
-            oscillations.prbEvent_during_stim{p} = [oscillations.prbEvent_during_stim{p}; max(ismember(stim_times, prbFirstPass(m,1):prbFirstPass(m,2)))];
+            oscillations.prbEvent_during_stim{p} = [oscillations.prbEvent_during_stim{p}; any(ismember(stim_times, prbFirstPass(m,1):prbFirstPass(m,2)))];
 
             probeSnippets.event_data{p}{end+1,1} = data_filt(:, prb_ext(m,1):prb_ext(m,2)); %ALL analyzed channels
         end
@@ -593,6 +640,25 @@ plot(plotdata(ch,:)-(500*(ch-1)))
 end
 hold off
 %% here eneds the folder loop
+end
+
+%% for each channel, mark which of its own probe's prbEvents it participates in
+for ch = 1:length(chanals)
+    probe_idx = chan_probe(ch); % a PROBE position (1..length(probes)), not a channel number
+    ch_ts = oscillations.chEvent_timestamps{ch};
+    ch_file = oscillations.chEvent_file_index{ch};
+    prb_ts = oscillations.prbEvent_timestamps{probe_idx};
+    prb_file = oscillations.prbEvent_file_index{probe_idx};
+
+    participation = false(size(prb_ts,1), 1);
+    for w = 1:size(ch_ts,1)
+        m_idx = find(prb_file == ch_file(w) & ...
+            ch_ts(w,1) >= prb_ts(:,1) & ch_ts(w,2) <= prb_ts(:,2), 1);
+        if ~isempty(m_idx)
+            participation(m_idx) = true;
+        end
+    end
+    oscillations.prbEvent_chParticipation{ch} = participation;
 end
 
 end
