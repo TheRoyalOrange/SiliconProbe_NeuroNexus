@@ -1,3 +1,62 @@
+% SummaryAnalysis_MultiMouseTF.m
+%
+% Description: Pools peri-stimulus Morlet wavelet TF data across mice and
+%   conditions for a user-chosen set of channels (e.g. one channel per
+%   cortical layer). For each good trial it computes band power in an early
+%   (P1) and late (P2) window after the stimulus, relative to that trial's
+%   prestimulus baseline, for custom alpha/beta (10-18) and low gamma (30-50)
+%   bands. Results go into one long-format table (one row per trial x
+%   channel) and are written to a csv for stats/plotting in R.
+%
+% Inputs:
+%   User-set config (edited at top of script):
+%     mice (cell array of strings, nMice x 1) - animal IDs; order becomes the
+%       factor order in R. List a mouse twice to analyze two channel groups
+%     chans (double, nChanPerMouse x nMice) - channel IDs (rows of raw data)
+%       to analyze for each mouse; row i in every column is the same
+%       layer/group, so it is compared across mice
+%     chan_groups (string, 1 x nChanPerMouse) - label for each row of chans (e.g. "L2/3")
+%     shank_groups (string, 1 x nChanPerMouse) - shank label for each row of chans (e.g. "C")
+%     region (cell array of strings, 1 x nMice) - brain area recorded per mouse (e.g. "V1")
+%     condis (cell array of char, 1 x nCond) - condition names; order becomes the factor order in R
+%     condiFileMice (cell array, nCond x 1) - each cell is a vector (1 x nFiles in
+%       that condition) giving the index into mice for each file picked in
+%       superCondis_dir{con}, in pick order
+%     P1wind, P2wind (double, vector) - TF sample indices of the response windows (default 3075:3350, 3350:6000)
+%     baseline_window (double, 1 x 2) - [start end] TF sample indices of the baseline (default [900 2900])
+%     alphabeta, lologamma (double, vector) - frequency row indices of each band
+%       [inferred: row index = frequency in Hz, i.e. 1 Hz steps starting at 1 Hz]
+%   Files picked per condition via uipickfiles (superCondis_dir, cell 1 x nCond),
+%   from E:\Roy\Processed Silicon Probe Data\TF\...\*_TF_results.mat, each containing:
+%     stim_tf (complex double, channels x frequencies x samples x trials) - Morlet
+%       wavelet output of the LFP. Assumed 6001 samples at 1 kHz with stim onset
+%       at sample 3000 [inferred: hard-coded preallocation and window defaults]
+%     tr_keep (double, 1 x nKeep) - indices of good trials (only these are analyzed)
+%   Probe-map plotting sections only (left over from the MUA script; they need
+%   variables this script never creates):
+%     ProbeInfo (struct), prb (double), superCondis_avg, superCondis_std
+%
+% Outputs:
+%   tableres (table, (nTrials*nChan) x 13) - one row per trial x channel. Columns:
+%     P1Power_AlphaBeta, P2Power_AlphaBeta (double) - mean power across the band and window,
+%       divided by that trial's baseline mean power (ratio, unitless; 1 = no change)
+%     P1Power_LoloGamma, P2Power_LoloGamma (double) - same, for the lologamma band
+%     Animal_Name (string), Animal_Num (double) - mouse ID and its index in mice
+%     Condition_Name (string), Condition_Num (double) - condition name and its index in condis
+%     Condition_FileNum (double) - index of the source file within its condition
+%     Region (string) - from region
+%     Channel_ID (double) - raw-data channel ID (from chans)
+%     Channel_GroupName (string) - from chan_groups
+%     Channel_GroupNum (double) - row index into chans (1..nChanPerMouse)
+%     (no Shank_GroupName column, unlike the LFP/MUA tables)
+%   <filename>.csv - tableres written to
+%     E:\Roy\Processed Silicon Probe Data\BundledAnimalData\csvfiles_forR\
+%     (file name chosen by the user in a dialog; existing names are rejected)
+%
+% Dependencies: OpenEphys_BaseAnalysis*.m (writes *_TF_results.mat);
+%   optionally QuickTrialRemove.m / ConditionalTrialRemove_callable.m
+%   (update tr_keep). Requires uipickfiles (File Exchange).
+
 %list mice to be analyzed. Note the order as it will be treated as a factor (R style)
 %if mouse has more than one group of channels to analyze, list
 %it twice here

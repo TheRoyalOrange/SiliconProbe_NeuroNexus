@@ -1,3 +1,63 @@
+% SummaryAnalysis_MultiMouseMUA.m
+%
+% Description: Pools peri-stimulus MUA across mice and conditions for a
+%   user-chosen set of channels (e.g. one channel per cortical layer). Spikes
+%   are binned to 1 ms and smoothed into a firing rate (50 ms moving mean),
+%   then per-trial AUC and peak rate are computed for an early (P1) and late
+%   (P2) window after the stimulus. Optional sections plot condition-averaged
+%   rate timeseries. Results go into one long-format table (one row per
+%   trial x channel) and are written to a csv for stats/plotting in R.
+%
+% Inputs:
+%   User-set config (edited at top of script):
+%     mice (cell array of strings, nMice x 1) - animal IDs; order becomes the
+%       factor order in R. List a mouse twice to analyze two channel groups
+%     chans (double, nChanPerMouse x nMice) - channel IDs (rows of raw data)
+%       to analyze for each mouse; row i in every column is the same
+%       layer/group, so it is compared across mice
+%     chan_groups (string, 1 x nChanPerMouse) - label for each row of chans (e.g. "L2/3")
+%     shank_groups (string, 1 x nChanPerMouse) - shank label for each row of chans (e.g. "C")
+%     region (cell array of strings, 1 x nMice) - brain area recorded per mouse (e.g. "V1")
+%     condis (cell array of char, 1 x nCond) - condition names; order becomes the factor order in R
+%     condiFileMice (cell array, nCond x 1) - each cell is a vector (1 x nFiles in
+%       that condition) giving the index into mice for each file picked in
+%       superCondis_dir{con}, in pick order
+%     congrouped, grouptitles (plotting sections only) - which condition
+%       indices to overlay in each figure, and the figure titles
+%   Files picked per condition via uipickfiles (superCondis_dir, cell 1 x nCond),
+%   from E:\Roy\Processed Silicon Probe Data\Spiking\...\*-spiking_results.mat, each containing:
+%     stim_spike_stimchunks (0/1, trials x samples x channels) - peri-stimulus
+%       spike indicator at 30 kHz. Stim onset is assumed at 5000 ms into the
+%       trial [inferred: P1/P2 windows and plot time axis assume this]
+%     tr_keep (double, 1 x nKeep) - indices of good trials
+%     tr_remove (double, 1 x nRemove) - indices of rejected trials
+%       NOTE: only their lengths are used; ALL trials
+%       (1:numel(tr_keep)+numel(tr_remove)) are analyzed, rejected ones included
+%
+% Outputs:
+%   superCondis (cell, 1 x nCond) - each (trials x ms x channels) 1 ms binned spike indicator
+%   superCondis_rate (cell, 1 x nCond) - each (trials x ms x channels) firing rate, in spikes/s
+%   superCondis_avg, superCondis_std (double, nCond x channels x ms) - trial mean / SD of rate, in spikes/s
+%   tableres (table, (nTrials*nChan) x 15) - one row per trial x channel. Columns:
+%     P1_AUC, P2_AUC, All_AUC (double) - integral of the rate over P1 (ms 5075:5350),
+%       P2 (5350:8000) and both (5075:8000), in spikes/s*ms
+%     P1_Peak, P2_Peak (double) - max rate in the P1 / P2 window, in spikes/s
+%     Animal_Name (string), Animal_Num (double) - mouse ID and its index in mice
+%     Condition_Name (string), Condition_Num (double) - condition name and its index in condis
+%     Condition_FileNum (double) - index of the source file within its condition
+%     Region (string) - from region
+%     Channel_ID (double) - raw-data channel ID (from chans)
+%     Channel_GroupName (string) - from chan_groups
+%     Shank_GroupName (string) - from shank_groups
+%     Channel_GroupNum (double) - row index into chans (1..nChanPerMouse)
+%   <filename>.csv - tableres written to
+%     E:\Roy\Processed Silicon Probe Data\BundledAnimalData\csvfiles_forR\
+%     (file name chosen by the user in a dialog; existing names are rejected)
+%
+% Dependencies: OpenEphys_BaseAnalysis*.m (writes *-spiking_results.mat);
+%   optionally QuickTrialRemove.m / ConditionalTrialRemove_callable.m
+%   (update tr_keep/tr_remove). Requires uipickfiles (File Exchange).
+
 %list mice to be analyzed. Note the order as it will be treated as a factor (R style)
 %if mouse has more than one group of channels to analyze, list
 %it twice here

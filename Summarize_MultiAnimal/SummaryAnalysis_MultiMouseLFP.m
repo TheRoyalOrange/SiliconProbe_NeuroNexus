@@ -1,3 +1,61 @@
+% SummaryAnalysis_MultiMouseLFP.m
+%
+% Description: Pools peri-stimulus LFP across mice and conditions for a
+%   user-chosen set of channels (e.g. one channel per cortical layer), and
+%   computes per-trial response metrics for an early (P1) and late (P2)
+%   window after the stimulus: the area under the RMS envelope of the
+%   2-150 Hz bandpassed signal, and the peak negative deflection with its
+%   latency. Results go into one long-format table (one row per trial x
+%   channel) and are written to a csv for stats/plotting in R.
+%
+% Inputs:
+%   User-set config (edited at top of script):
+%     mice (cell array of strings, nMice x 1) - animal IDs; order becomes the
+%       factor order in R. List a mouse twice to analyze two channel groups
+%     chans (double, nChanPerMouse x nMice) - channel IDs (rows of raw data)
+%       to analyze for each mouse; row i in every column is the same
+%       layer/group, so it is compared across mice
+%     chan_groups (string, 1 x nChanPerMouse) - label for each row of chans (e.g. "L2/3")
+%     shank_groups (string, 1 x nChanPerMouse) - shank label for each row of chans (e.g. "C")
+%     region (cell array of strings, 1 x nMice) - brain area recorded per mouse (e.g. "V1")
+%     condis (cell array of char, 1 x nCond) - condition names; order becomes the factor order in R
+%     condiFileMice (cell array, nCond x 1) - each cell is a vector (1 x nFiles in
+%       that condition) giving the index into mice for each file picked in
+%       superCondis_dir{con}, in pick order
+%   Files picked per condition via uipickfiles (superCondis_dir, cell 1 x nCond),
+%   from E:\Roy\Processed Silicon Probe Data\LFP\...\*-LFP.mat, each containing:
+%     stim_lfp_stimchunks (double, trials x samples x channels) - peri-stimulus
+%       LFP, 1 kHz, presumably in uV [inferred: units not stated upstream].
+%       Stim onset is assumed at sample 5000 [inferred: P1/P2
+%       windows and peak latencies are measured from 5000]
+%     tr_keep (double, 1 x nKeep) - indices of good trials
+%     tr_remove (double, 1 x nRemove) - indices of rejected trials
+%       NOTE: only their lengths are used; ALL trials
+%       (1:numel(tr_keep)+numel(tr_remove)) are analyzed, rejected ones included
+%
+% Outputs:
+%   tableres (table, (nTrials*nChan) x 16) - one row per trial x channel. Columns:
+%     P1_RMSsum, P2_RMSsum (double) - area under the 25-sample RMS envelope of the
+%       2-150 Hz bandpassed LFP over P1 (samples 5075:5350) / P2 (5350:8000), in LFP units x ms
+%     P1_Peak, P2_Peak (double) - max negative deflection in the window, in LFP units (sign flipped to positive)
+%     P1_PeakTime, P2_PeakTime (double) - latency of that peak from stim onset, in ms
+%     Animal_Name (string), Animal_Num (double) - mouse ID and its index in mice
+%     Condition_Name (string), Condition_Num (double) - condition name and its index in condis
+%     Condition_FileNum (double) - index of the source file within its condition
+%     Region (string) - from region
+%     Channel_ID (double) - raw-data channel ID (from chans)
+%     Channel_GroupName (string) - from chan_groups
+%     Shank_GroupName (string) - from shank_groups
+%     Channel_GroupNum (double) - row index into chans (1..nChanPerMouse)
+%   <filename>.csv - tableres written to
+%     E:\Roy\Processed Silicon Probe Data\BundledAnimalData\csvfiles_forR\
+%     (file name chosen by the user in a dialog; existing names are rejected)
+%
+% Dependencies: OpenEphys_BaseAnalysis*.m (writes *-LFP.mat); optionally
+%   QuickTrialRemove.m / ConditionalTrialRemove_callable.m (update tr_keep/tr_remove).
+%   Requires uipickfiles (File Exchange) and the Signal Processing Toolbox
+%   (bandpass, envelope).
+
 %list mice to be analyzed. Note the order as it will be treated as a factor (R style)
 %if mouse has more than one group of channels to analyze, list
 %it twice here
