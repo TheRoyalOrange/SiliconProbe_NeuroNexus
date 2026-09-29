@@ -148,13 +148,13 @@
 
 %list mice to be analyzed. Note the order as it will be treated as a factor (R style)
 %names must match the start of the data file names (animal-stim-LFP.mat)
-mice = {"20260226-p12"};%, "20260402-p12"};
+mice = {"20260423-p12"};%, "20260402-p12"};
 
 %which brain area is being recorded for each mouse? (same order as mice)
 %used to pick the probe: must match that mouse's ProbeInfo.Areas
 region = {"V1"};
 
-condis = {'L_4','LW_4', 'L_8','LW_8','L_12','LW_12','L_15','LW_15'}; %list conditions to be included, named as you'd prefer. Note the order
+condis = {'W','L_4','LW_4', 'L_8','LW_8','L_12','LW_12','L_15','LW_15'}; %list conditions to be included, named as you'd prefer. Note the order
 % as they will be treated as factors later
 
 %trial labels made with ConditionalTrialRemove.m to add as columns (empty = none)
@@ -359,6 +359,15 @@ for con = 1:numel(condis)
         %good trials (from the LFP file): tr_remove is a 0/1 mask over tr_keep
         tr_keep = dat.tr_keep;
         tr_remove = dat.tr_remove;
+        %TEMPORARY: convert the old format (tr_keep = kept trial numbers, tr_remove = removed trial numbers
+        %or empty) to the mask format (tr_keep = all trials, tr_remove = 0/1 mask). Remove once all files
+        %have been through ConditionalTrialRemove(_callable).m
+        if numel(tr_remove) ~= numel(tr_keep)
+            alltr = sort([tr_keep(:); tr_remove(:)])';
+            tr_remove = double(ismember(alltr, tr_remove));
+            tr_keep = alltr;
+            fprintf('%s: old tr_keep/tr_remove format converted to a mask (%d of %d trials removed)\n', fname, sum(tr_remove), numel(tr_keep))
+        end
         assert(numel(tr_remove) == numel(tr_keep) && all(ismember(tr_remove,[0 1])), ...
             '%s: tr_remove must be a 0/1 mask the same length as tr_keep (updated format)', fname)
         trs = tr_keep(~logical(tr_remove));
@@ -411,6 +420,11 @@ for con = 1:numel(condis)
         if hasMUA{con}(file)
             sdat = matfile(spikefile{con}{file});
             sk = sdat.tr_keep;  sr = sdat.tr_remove;
+            if numel(sr) ~= numel(sk) %TEMPORARY: same old-format conversion as for the LFP file
+                allsk = sort([sk(:); sr(:)])';
+                sr = double(ismember(allsk, sr));
+                sk = allsk;
+            end
             assert(isequal(sk(:),tr_keep(:)) && isequal(sr(:),tr_remove(:)), ...
                 '%s: tr_keep/tr_remove in the spiking file differ from the LFP file', fname)
             tr_rng = min(trs):max(trs);
