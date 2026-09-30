@@ -145,14 +145,14 @@
 %   tr_remove_conditional labels); ProbeInfo.ShankLabels from the channel/shank labelling
 %   scripts. Requires uipickfiles (File Exchange), the Signal Processing Toolbox (butter,
 %   zp2sos, filtfilt, envelope) and MATLAB R2017b+ (islocalmax).
-
+%%
 %list mice to be analyzed. Note the order as it will be treated as a factor (R style)
 %names must match the start of the data file names (animal-stim-LFP.mat)
-mice = {"20260423-p12"};%, "20260402-p12"};
+mice = {"20260226-p12", "20260402-p12", "20260411-p9","20260423-p12"};%, };
 
 %which brain area is being recorded for each mouse? (same order as mice)
 %used to pick the probe: must match that mouse's ProbeInfo.Areas
-region = {"V1"};
+region = {"V1","V1","V1","V1"};
 
 condis = {'W','L_4','LW_4', 'L_8','LW_8','L_12','LW_12','L_15','LW_15'}; %list conditions to be included, named as you'd prefer. Note the order
 % as they will be treated as factors later
@@ -166,7 +166,7 @@ tr_conditional_use = {}; %e.g. {"whisker_twitch_artifact"}
 %do_LFP = true;
 %do_MUA = true;
 %do_TF = true;
-
+%%
 %LFP settings
 lfp_band = [1 150];   %Hz, bandpass for the RMS envelope
 rms_win_ms = 25;      %RMS envelope window for RMSsum
@@ -241,6 +241,49 @@ end
 for con = 1:length(condis)
     superCondis_dir{con} = uipickfiles('FilterSpec','E:\Roy\Processed Silicon Probe Data\LFP','Prompt', ['Choose ' condis{con} ' LFP files']);
 end
+%% TEMPORARY: tr_keep/tr_remove of each recording come from its LFP file, in the mask format
+%(tr_keep = all trial numbers, tr_remove = 0/1 mask over them). LFP files in the old format
+%(tr_remove empty, or a list of removed trial numbers with those removed from tr_keep) are converted
+%and saved back into the LFP file; the spiking file of the same recording then gets the LFP file's
+%tr_keep/tr_remove (saved with -append; nothing else in either file is changed).
+%Remove this section once all files have been through ConditionalTrialRemove(_callable).m
+for con = 1:numel(condis)
+    for file = 1:numel(superCondis_dir{con})
+        lf = superCondis_dir{con}{file};
+        [~,fname] = fileparts(lf);
+        d = load(lf,'tr_keep','tr_remove');
+        tr_keep = d.tr_keep;
+        tr_remove = d.tr_remove;
+        if numel(tr_remove) ~= numel(tr_keep)
+            alltr = sort([tr_keep(:); tr_remove(:)])';
+            tr_remove = double(ismember(alltr, tr_remove));
+            tr_keep = alltr;
+            w = whos('-file',lf,'stim_lfp_stimchunks');
+            assert(numel(tr_keep) == w.size(1) && isequal(tr_keep, 1:w.size(1)), ...
+                '%s: converted tr_keep (%d trials) does not match the %d trials in stim_lfp_stimchunks - not saved', ...
+                fname, numel(tr_keep), w.size(1))
+            save(lf,'tr_keep','tr_remove','-append');
+            fprintf('%s: old tr_keep/tr_remove converted to a mask and saved (%d of %d trials removed)\n', ...
+                fname, sum(tr_remove), numel(tr_keep))
+        end
+        %spiking file of the same recording (same name rule as the next section) inherits them
+        sf = strrep(strrep(lf,'\LFP\','\Spiking\'),'-LFP.mat','-spiking_results.mat');
+        if isfile(sf)
+            s = matfile(sf);
+            svars = who(s);
+            same = ismember('tr_keep',svars) && ismember('tr_remove',svars);
+            if same
+                sk = s.tr_keep;  sr = s.tr_remove; %whole variables (matfile can't index them as (:))
+                same = isequal(double(sk(:)), double(tr_keep(:))) && isequal(double(sr(:)), double(tr_remove(:)));
+            end
+            if ~same
+                save(sf,'tr_keep','tr_remove','-append');
+                fprintf('%s: spiking file tr_keep/tr_remove set from the LFP file\n', fname)
+            end
+        end
+    end
+end
+clear d s w lf sf alltr same svars sk sr tr_keep tr_remove
 %% match files to mice, find each recording's spiking file, and get channels for each mouse from ProbeInfo
 
 %which mouse is each file from? (file names start with animal-)
@@ -359,15 +402,6 @@ for con = 1:numel(condis)
         %good trials (from the LFP file): tr_remove is a 0/1 mask over tr_keep
         tr_keep = dat.tr_keep;
         tr_remove = dat.tr_remove;
-        %TEMPORARY: convert the old format (tr_keep = kept trial numbers, tr_remove = removed trial numbers
-        %or empty) to the mask format (tr_keep = all trials, tr_remove = 0/1 mask). Remove once all files
-        %have been through ConditionalTrialRemove(_callable).m
-        if numel(tr_remove) ~= numel(tr_keep)
-            alltr = sort([tr_keep(:); tr_remove(:)])';
-            tr_remove = double(ismember(alltr, tr_remove));
-            tr_keep = alltr;
-            fprintf('%s: old tr_keep/tr_remove format converted to a mask (%d of %d trials removed)\n', fname, sum(tr_remove), numel(tr_keep))
-        end
         assert(numel(tr_remove) == numel(tr_keep) && all(ismember(tr_remove,[0 1])), ...
             '%s: tr_remove must be a 0/1 mask the same length as tr_keep (updated format)', fname)
         trs = tr_keep(~logical(tr_remove));
@@ -420,11 +454,6 @@ for con = 1:numel(condis)
         if hasMUA{con}(file)
             sdat = matfile(spikefile{con}{file});
             sk = sdat.tr_keep;  sr = sdat.tr_remove;
-            if numel(sr) ~= numel(sk) %TEMPORARY: same old-format conversion as for the LFP file
-                allsk = sort([sk(:); sr(:)])';
-                sr = double(ismember(allsk, sr));
-                sk = allsk;
-            end
             assert(isequal(sk(:),tr_keep(:)) && isequal(sr(:),tr_remove(:)), ...
                 '%s: tr_keep/tr_remove in the spiking file differ from the LFP file', fname)
             tr_rng = min(trs):max(trs);
