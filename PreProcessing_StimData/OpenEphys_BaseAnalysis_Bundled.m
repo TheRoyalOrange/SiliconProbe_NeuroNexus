@@ -187,9 +187,9 @@
 %close all
 
 %%%Experiment details%%%
-animal = '20260924-p11';
+animal = '20260226-p12';
 %where is the data stored?
-load_directory = 'E:\Roy\Silicon Probe Raw Data\20260924-p11'; %recommend to choose folder for whole experiment
+load_directory = 'E:\Roy\Silicon Probe Raw Data\20260226-p12'; %recommend to choose folder for whole experiment
 
 %where will the output be saved?
 save_directory = 'E:\Roy\Processed Silicon Probe Data'; %this should stay the same for all animals/recordings
@@ -202,12 +202,26 @@ stim_all = {
              % 'whiskerActive_TTX_2'
              % 'whiskerActive_TTX_3'
              'whisker'
-            % 'whisker_2'
+             'whisker_2'
             % 'whisker_3'
             % 'whisker_4'
             % %'whisker_5'
-            % 'light22_40-n-whisker'
-            % 'light22_40-n-whisker_2'
+             'light22_32'
+             'light22_32_2'
+             'light22_32-n-whisker'
+             'light22_32-n-whisker_2'
+             'light22_40'
+             'light22_40_2'
+             'light22_40-n-whisker'
+             'light22_40-n-whisker_2'
+             'light22_48'
+             'light22_48_2'
+             'light22_48-n-whisker'
+             'light22_48-n-whisker_2'
+             'light22_56'
+             'light22_56_2'
+             'light22_56-n-whisker'
+             'light22_56-n-whisker_2'
             % 'light22_40-n-whisker_3'
             % 'light22_40-n-whisker_4'
             % %'light22_40-n-whisker_5'
@@ -258,7 +272,7 @@ mr_clean = 1;
 %which analyses to run?
 LFP = 1; %local field potential
 CSD = 1; %current source density
-TF = 1; %time frequency
+TF = 0; %time frequency
 MUA = 1; %Spiking
 
 %want to check for bad trials?
@@ -326,7 +340,7 @@ reorder = 0; %need to reorder the channels? (only if there's a mistake in GUI ma
 
 
 %use already existing probe information for this animal?
-Cogito_ProbeSum = 0; %this is not automated in case you want to make a new one
+Cogito_ProbeSum = 1; %this is not automated in case you want to make a new one
     
     %RUN THE LINE BELOW TO DOUBLE CHECK THAT THE PROBE INFO EXISTS!!!!
     %isfile(fullfile([save_directory '\ProbeInfo\' animal '-ProbeInfo.mat']))
@@ -1620,7 +1634,7 @@ end
 
 end
 %% plot TF and ITPC in probe layout
-if showme == 1
+if showme == 1 && TF == 1
 disp('TF: Plotting TF and ITPC results for you :)')   
 
 % convert to decibal and calculate avg (just for plotting purposes)
@@ -1821,8 +1835,10 @@ end
 disp('Sorry, for space reasons I will be closing all plots now. Please complain to Roy if you really hate this and think hes dumb for doing it.')
 disp('(by the way, if you selected the save plots option, then you can just go open them again)')
 close all
+end
 
-%%
+%% Save TF results
+if TF == 1
 disp('TF: Saving TF results')
 fname = sprintf([animal '-' stim  '_TF_results','.mat']);
 save([save_directory '\TF\' animal '\'  fname], 'stim_tf', 'tr_remove','tr_keep', '-v7.3');

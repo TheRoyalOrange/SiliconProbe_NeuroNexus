@@ -1545,7 +1545,7 @@ end
 
 end
 %% plot TF and ITPC in probe layout
-if showme == 1
+if showme == 1 && TF == 1
 disp('TF: Plotting TF and ITPC results for you :)')   
 
 % convert to decibal and calculate avg (just for plotting purposes)
@@ -1746,9 +1746,10 @@ end
 disp('Sorry, for space reasons I will be closing all plots now. Please complain to Roy if you really hate this and think hes dumb for doing it.')
 disp('(by the way, if you selected the save plots option, then you can just go open them again)')
 close all
+end
 
-%%
-
+%% Save TF results
+if TF == 1
 disp('TF: Saving TF results')
 fname = sprintf([animal '-' stim  '_TF_results','.mat']);
 save([save_directory '\TF\' animal '\'  fname], 'stim_tf', 'tr_remove','tr_keep', '-v7.3');
