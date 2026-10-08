@@ -9,8 +9,7 @@
 %   column), a 5 x 1 tiled layout (4 x 1 without the normalized plot):
 %     tile 1: line plot, one line per animal, of the feature per column (mean of that
 %       animal's channel means in the column); condition A solid, condition B dashed (same
-%       colour per animal). With do_stats (and condB), a star in the animal's colour above
-%       a column where A and B differ (see Statistics)
+%       colour per animal)
 %     tile 2 (normalized plot, default on): the same lines, each divided by its own value at
 %       the reference (normto): a chosen column (default 3 = top shank) or the line's peak
 %       (highest column value). Each condition line is normalized to its own reference, so
@@ -20,15 +19,17 @@
 %       per-position mean over trials: condition A alone (green), or B - A (each animal's
 %       difference first, then the mean; blue-white-red, white = 0). NaN cells are black.
 %       Below each column: n = number of animals with data in that column (animals whose
-%       top shank is near the probe edge do not have all 5 columns)
+%       top shank is near the probe edge do not have all 5 columns). With do_stats (and
+%       condB), a star in the corner of each cell where A and B differ (see Statistics)
 %   Optional trial filter: rows (trial x channel) are kept only where a table column meets a
 %   condition (e.g. "P1_MUAAUC > 100"), before any averaging, for both conditions.
-%   Statistics (do_stats, condB given): per animal and column, one value per trial = mean of
-%   the feature over the column's channels in that trial (trial = Condition_FileNum + Trial);
-%   Wilcoxon rank-sum test (ranksum) of the condA trials vs the condB trials (unpaired, NaN
-%   ignored, at least min_trials per condition), Benjamini-Hochberg FDR correction over all
-%   tests in the figure (use_fdr), alpha = 0.05. alpha, use_fdr and min_trials are set at
-%   the top of the function. Returns figure handles and the plotted numbers; saves nothing.
+%   Statistics (do_stats, condB given; same test as plotRankedShankRows.m): per heatmap cell
+%   (row x column), the feature values of all chosen animals' trials at that position (one
+%   value per trial, animals pooled): Wilcoxon rank-sum test (ranksum) of condA vs condB
+%   (unpaired, NaN ignored, at least min_trials per condition), Benjamini-Hochberg FDR
+%   correction over all tested cells (use_fdr), alpha = 0.05. alpha, use_fdr and min_trials
+%   are set at the top of the function. Returns figure handles and the plotted numbers;
+%   saves nothing.
 %
 % Inputs:
 %   summaryTable (table, or char/string path to its csv) - tableres from
@@ -37,7 +38,6 @@
 %       Chan_Shank (double) - shank (ProbeMaps column) of the channel
 %       Chan_Depth (double) - position among that shank's kept channels, 1 = top; NaN rows dropped
 %       ShankRank_<score> (double) - rank of the channel's shank by that ShankLabels score, 1 = highest
-%       Condition_FileNum, Trial (double) - identify a trial (statistics only)
 %       measure columns named <P1|P2|All>_... (double) - the features offered
 %     INFERRED DATA CONTRACT: neighbouring Chan_Shank numbers are physically neighbouring
 %     shanks (ProbeMaps column order = physical shank order)
@@ -55,8 +55,7 @@
 %     > >= < <= == ~=; a numeric column takes a number, a text column only == / ~= with a text
 %     value (quotes optional). Several are combined with AND. Rows where the column is NaN are
 %     dropped. Omitted/empty = no filtering
-%   do_stats (logical, optional) - true: per-animal, per-column A vs B test (only with condB);
-%     default false
+%   do_stats (logical, optional) - true: per-cell A vs B test (only with condB); default false
 %   normto (double or char/string, optional) - normalized line plot: a column 1-5 to normalize
 %     to (3 = top shank, 1/2 = -2/-1, 4/5 = +1/+2), "peak" (each line's highest column value),
 %     or "none" / 0 / false (no normalized plot). Omitted/empty = 3
@@ -74,8 +73,8 @@
 %     .colA, .colB (double, nAnimals x 5) - line plot values
 %     .normto (double or string) - reference of the normalized plot (column, "peak" or "none")
 %     .colA_norm, .colB_norm (double, nAnimals x 5) - normalized line plot values (empty if none)
-%     .p, .sig (nAnimals x 5) - rank-sum p-values (NaN = not tested) and significance after
-%       FDR (empty without statistics)
+%     .p, .sig (rows x 5) - rank-sum p-values per cell (NaN = not tested) and significance
+%       after FDR (empty without statistics)
 %
 % Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable, including its
 %   separate section that adds Chan_Shank / Chan_Depth / ShankRank_<score> (ShankLabels from
@@ -87,9 +86,9 @@ function [figs, data] = plotRankedShankProfile(summaryTable, animals, condA, con
 
 figs = gobjects(1,0);
 data = struct([]);
-%statistics settings (do_stats): Wilcoxon rank-sum of A vs B trials per animal and column
+%statistics settings (do_stats): Wilcoxon rank-sum of A vs B trials per heatmap cell
 alpha = 0.05;       %significance level
-use_fdr = true;     %Benjamini-Hochberg FDR correction across all tests in a figure
+use_fdr = true;     %Benjamini-Hochberg FDR correction across all tested cells of a figure
 min_trials = 3;     %minimum trials (non-NaN) per condition to test
 offsets = -2:2;     %columns: shanks relative to the top-ranked shank
 
@@ -288,16 +287,17 @@ for fi = 1:numel(features)
         if ~isempty(colB), colB_norm = normLines(colB, normto); end
     end
 
-    %statistics: per animal and column, rank-sum of the A vs B trial values (trial = mean over the column's channels)
+    %statistics: per cell, rank-sum of the A vs B trial values (all animals pooled), as plotRankedShankRows.m
     P = [];  sig = [];
     if do_stats
-        P = NaN(na,5);
-        for a = 1:na
+        P = NaN(nrow,5);
+        for r = 1:nrow
             for c = 1:5
-                xa = trialValues(T, feat, animals(a), condA, c);
-                xb = trialValues(T, feat, animals(a), condB, c);
+                atpos = T.Chan_Depth == r & T.col == c;
+                xa = T.(feat)(atpos & T.Condition_Name == condA);  xa = xa(~isnan(xa));
+                xb = T.(feat)(atpos & T.Condition_Name == condB);  xb = xb(~isnan(xb));
                 if numel(xa) >= min_trials && numel(xb) >= min_trials
-                    P(a,c) = ranksum(xa, xb);
+                    P(r,c) = ranksum(xa, xb);
                 end
             end
         end
@@ -316,7 +316,7 @@ for fi = 1:numel(features)
         ttl{end+1} = filtertxt; %#ok<AGROW>
     end
     if do_stats
-        ttl{end+1} = sprintf('* = rank-sum %s vs %s per animal, %s alpha = %.2f', condA, condB, ternary(use_fdr,'BH-FDR,',''), alpha); %#ok<AGROW>
+        ttl{end+1} = sprintf('* = rank-sum %s vs %s per cell (animals pooled), %s alpha = %.2f', condA, condB, ternary(use_fdr,'BH-FDR,',''), alpha); %#ok<AGROW>
     end
     figs(end+1) = figure('Name',sprintf('%s: %s (%s)',feat,what,erase(rankfield,"ShankRank_")),'Color','w', ...
         'Units','pixels','Position',[100 60 900 850]); %#ok<AGROW>
@@ -343,19 +343,6 @@ for fi = 1:numel(features)
     grid(ax1,'on'); ax1.GridAlpha = 0.15; box(ax1,'off');
     lg = legend(ax1,'Interpreter','none');
     lg.Layout.Tile = 'east'; %outside both plots (as the colorbar), so line points stay above their heatmap columns
-    %stars above the higher of an animal's A/B points (slightly staggered so animals do not overlap)
-    if do_stats && any(sig,'all')
-        yl = ylim(ax1);
-        dy = 0.06*diff(yl);
-        for a = 1:na
-            for c = find(sig(a,:))
-                y = max([colA(a,c) colB(a,c)]) + dy;
-                text(ax1, c + (a-(na+1)/2)*0.08, y, '*', 'Color',acol(a,:), 'FontSize',16, 'FontWeight','bold', ...
-                    'HorizontalAlignment','center','VerticalAlignment','middle');
-            end
-        end
-        ylim(ax1,[yl(1) max(yl(2), max([colA(sig) ; colB(sig)]) + 2*dy)]);
-    end
     linked = ax1;
 
     %tile 2: the same lines normalized to the reference (each line 1 at its reference)
@@ -396,6 +383,14 @@ for fi = 1:numel(features)
     cb.Layout.Tile = 'east';
     cb.Label.String = sprintf('%s: %s (mean of animal means)', feat, what);
     cb.Label.Interpreter = 'none';
+    %significant cells (A vs B): star in the cell's corner
+    if do_stats
+        [rs,cs] = find(sig);
+        for i = 1:numel(rs)
+            text(ax2, cs(i)+0.36, rs(i)-0.32, '*', 'Color','k', 'FontSize',14, 'FontWeight','bold', ...
+                'HorizontalAlignment','center','VerticalAlignment','middle');
+        end
+    end
     xticks(ax2,1:5); yticks(ax2,1:nrow);
     %two-line tick labels: offset from the top shank, then n = animals with data in that column
     ticklab = cell(1,5);
@@ -464,18 +459,6 @@ function M = positionMap(T, feat, animal, cond, nrow)
 %mean of feature feat over the trials of one animal and condition at each position (rows x 5, NaN = no data)
 sub = T.Animal_Name == animal & T.Condition_Name == cond;
 M = accumarray([T.Chan_Depth(sub) T.col(sub)], T.(feat)(sub), [nrow 5], @(x) mean(x,'omitnan'), NaN);
-end
-
-function x = trialValues(T, feat, animal, cond, c)
-%one value per trial: mean of feature feat over the channels of column c (trial = Condition_FileNum + Trial; NaN dropped)
-sub = T.Animal_Name == animal & T.Condition_Name == cond & T.col == c;
-if ~any(sub)
-    x = [];
-    return
-end
-g = findgroups(T.Condition_FileNum(sub), T.Trial(sub));
-x = splitapply(@(v) mean(v,'omitnan'), T.(feat)(sub), g);
-x = x(~isnan(x));
 end
 
 function sig = significant(P, alpha, use_fdr)

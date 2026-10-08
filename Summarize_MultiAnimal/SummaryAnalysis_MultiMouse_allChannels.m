@@ -90,12 +90,15 @@
 %   metriccols (struct) - one field per measure (column name), each a column over all rows
 %
 % Outputs:
-%   tableres (table, nRows x (13 + 3*nBands + 13 + nLabels + nScores)) - one row per good trial x
+%   tableres (table, nRows x (14 + 3*nBands + 13 + nLabels + nScores)) - one row per good trial x
 %   kept channel, ordered condition -> file -> channel -> trial. Columns:
 %     LFP (measured on the LFP file):
 %     P1_LFPRMSsum, P2_LFPRMSsum (double) - area under the rms_win_ms RMS envelope of the
 %       lfp_band-filtered LFP over P1 (75-350 ms post stimulus) / P2 (350-3000 ms), in uV*ms.
 %       The filter smears ~0.3 s, so a strong P1 response adds ~12% of its own RMSsum to P2
+%     All_LFPRMSsum (double) - the same area over All (75-3000 ms), in uV*ms; equals
+%       P1_LFPRMSsum + P2_LFPRMSsum (trapezoid integrals; the windows share the 350 ms sample).
+%       Column placed after P2_LFPPeakTime
 %     P1_LFPPeak, P2_LFPPeak (double) - size of the negative peak in the P1 / P2 window, as a
 %       positive value in uV, measured on a peak_smooth_ms moving mean of the unfiltered LFP:
 %       the highest local maximum of the sign-flipped trace (lower on both sides, window padded
@@ -528,6 +531,10 @@ for con = 1:numel(condis)
             peaks(nopeak) = NaN;  peaktime(nopeak) = NaN;
             chmetrics.P2_LFPPeak = peaks;
             chmetrics.P2_LFPPeakTime = peaktime;
+
+            %All (75-3000 ms): RMSsum over the whole response (= P1_LFPRMSsum + P2_LFPRMSsum, the windows share the 350 ms sample)
+            auc = cumtrapz(chenv(:,Allwind),2);
+            chmetrics.All_LFPRMSsum = auc(:,end);
             % =============================
 
             % ============ MUA ============
