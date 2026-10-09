@@ -6,7 +6,8 @@
 %   shank for an alignment label (ShankRank_<alignlabel> == 1; chosen in a dialog if
 %   omitted): that shank is column 3, its neighbouring shanks columns 1-2 (left) and 4-5
 %   (right). Rows are Chan_Depth 1..maxdepth (position among the shank's kept channels,
-%   1 = top; maxdepth = 3). One figure per chosen feature, a 5 x 4 tiled layout:
+%   1 = top; maxdepth = 3). One figure per chosen feature, a 5 x 4 tiled layout (row 1 is
+%   25% taller than rows 2-5):
 %     row 1: activity labels from each animal's ProbeInfo, all aligned by the alignment label:
 %       (1,1) the spontaneous label (name containing "Spon"), (1,2)-(1,3) stimlabels (default
 %       LightOnly, WhiskerOnly). Each tile: a line per animal of the label's shank scores for
@@ -23,10 +24,9 @@
 %   (each ratio comparison sits next to the two ratio tiles it compares)
 %   Single conditions (rows 2-3, columns 1-2): mean over animals of each animal's
 %   per-position mean over trials; green, one colour scale shared by the 4 tiles; with
-%   normto not "none", each also shows per row a line (mean over animals) and each animal's
-%   value (o), divided by the line's reference (normto: centre column by default, or a
-%   column / the line's peak), on one vertical scale shared by the 4 tiles (reference value
-%   1 on the row's dotted centre line; the title gives the scale).
+%   rowlines, each also shows per row a line of the row's values across the 5 columns,
+%   stretched so the row's min / max sit at 20% / 80% of the row height (shape only; the
+%   colour gives the size).
 %   Ratio tiles (B / A): per animal and cell, the animal's mean of B divided by its mean of A
 %   (one value per animal; NaN where the A mean is 0); heatmap = mean of the animal ratios.
 %   Blue-white-red with white = 1, two scales symmetric around 1: one for the two LW / L
@@ -48,9 +48,11 @@
 %   contribute to it. Every heatmap gives n = animals with data per column under its
 %   columns. Optional trial filter as in plotRankedShankRows.m. The condition names, alpha,
 %   use_fdr, min_trials, min_animals, maxdepth and the paths are set at the top of the
-%   function.
-%   Returns figure handles and the plotted numbers; with save_png the figures are also saved
-%   as PNGs (see Outputs).
+%   function. The figure title is short, "<region> Response to L vs LW with TTX: <feature>
+%   (n = <animals>)"; the run information (table, conditions, alignment, animals and top
+%   shanks, filter, row lines, statistics, colour scales) is in data.info and, with
+%   save_png, in a .txt file next to the PNG. Returns figure handles and the plotted
+%   numbers; nothing is printed.
 %
 % Inputs (same order as plotLWIntensityCompare_multianimal.m):
 %   animals (string array, optional) - Animal_Name values; omitted/empty = list dialog (multiple)
@@ -76,15 +78,15 @@
 %     2 ratio comparisons
 %   save_png (logical, optional) - true: also save each figure as a PNG (see Outputs);
 %     default false. Once features and region are known and before anything is plotted, a
-%     text box asks for a file-name prefix (default n<number of animals>; Cancel stops the
-%     function). If any of the files already exists, a dialog offers Overwrite, Quit (stops
-%     with an error) or Edit Prefix (the new prefix is checked again). Closing it = Quit
+%     text box shows the whole default file name, n<number of animals>_<area>_LvsLW_TTX, to
+%     edit (the feature is added to it; Cancel stops the function). If any of the PNG / TXT
+%     files already exists, a dialog offers Overwrite, Quit (stops with an error) or Edit
+%     Name (the new name is checked again). Closing it = Quit
 %   alignlabel (char/string, optional) - label whose top-ranked shank is column 3 (a
 %     ShankRank_<label> column, prefix optional); omitted/empty = list dialog of the table's
 %     ShankRank_ labels (LightOnly pre-selected)
-%   normto (double or char/string, optional) - row lines on the single-condition heatmaps: a
-%     column 1-5 to normalize to (3 = centre), "peak", or "none" / 0 / false (no row lines or
-%     points). Default 3
+%   rowlines (logical, optional) - true (default): draw the stretched row lines on the
+%     single-condition heatmaps; false: plain heatmaps
 %   trialfilter (string array, optional) - conditions "<column> <op> <value>", op one of
 %     > >= < <= == ~=; a numeric column takes a number, a text column only == / ~= with a text
 %     value. Several are combined with AND. Rows where the column is NaN are dropped.
@@ -97,7 +99,8 @@
 % Outputs:
 %   figs (figure handle array, 1 x nFeatures) - one figure per feature
 %   data (struct array, 1 x nFeatures) - the plotted numbers, fields:
-%     .feature, .region, .alignlabel, .stimlabels, .trialfilter, .normto
+%     .feature, .region, .alignlabel, .stimlabels, .trialfilter, .rowlines
+%     .info (string array) - the run information (written to the .txt file with save_png)
 %     .animals (string, 1 x nAnimals), .topshank (double, 1 x nAnimals) - Chan_Shank of each
 %       animal's top-ranked shank for alignlabel
 %     .labels (struct array, 1 x 3) - row 1: .name, .scores (nAnimals x 5, normalized shank
@@ -114,8 +117,8 @@
 %       (LW_8/L_8)) - .name, .first, .second (indices into .ratio), .map (nAnimals x maxdepth
 %       x 5, animal differences), .heat, .n, .p, .q, .sig (one-sample t-test vs 0; empty
 %       without statistics)
-%   with save_png: <savebase>\<prefix>_<area>_LvsLW_TTX_<feature>.png, one per feature,
-%     150 dpi (savebase = E:\Roy\Processed Silicon Probe Data\BundledAnimalData\MultAnimal)
+%   with save_png: <savebase>\<name>_<feature>.png (150 dpi) and <name>_<feature>.txt (data.info),
+%     one pair per feature (savebase = E:\Roy\Processed Silicon Probe Data\BundledAnimalData\MultAnimal)
 %
 % Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable, including its
 %   separate section that adds Chan_Shank / Chan_Depth / ShankRank_<score>; ProbeInfo labels
@@ -125,7 +128,7 @@
 %   Learning Toolbox (ranksum, ttest).
 
 function [figs, data] = plotLWTTXCompare_multianimal(animals, summaryTable, region, features, ...
-    stimlabels, do_stats, save_png, alignlabel, normto, trialfilter)
+    stimlabels, do_stats, save_png, alignlabel, rowlines, trialfilter)
 
 figs = gobjects(1,0);
 data = struct([]);
@@ -136,13 +139,15 @@ use_fdr = true;     %Benjamini-Hochberg FDR correction across the tested cells o
 min_trials = 3;     %minimum trials (non-NaN) per condition to test a cell
 min_animals = 3;    %minimum animals with a value to t-test a ratio-comparison cell
 offsets = -2:2;     %columns: shanks relative to the top-ranked shank
-linefill = 0.45;    %largest row-line deviation, as a fraction of a row height
 probeinfo_dir = 'E:\Roy\Processed Silicon Probe Data\ProbeInfo';
 savebase = 'E:\Roy\Processed Silicon Probe Data\BundledAnimalData\MultAnimal';
 
 %% summary table: from a csv path or given directly; check the columns needed
 if ischar(summaryTable) || isstring(summaryTable)
+    tablesource = string(summaryTable);
     summaryTable = readtable(char(summaryTable), 'TextType','string');
+else
+    tablesource = "table passed in (tableres)";
 end
 assert(istable(summaryTable), 'summaryTable must be a table (tableres) or the path to its csv')
 vn = string(summaryTable.Properties.VariableNames);
@@ -241,23 +246,10 @@ if nargin < 6 || isempty(do_stats)
     do_stats = true;
 end
 do_stats = logical(do_stats);
-if nargin < 9 || isempty(normto)
-    normto = 3; %default: row lines normalized to the centre column
+if nargin < 9 || isempty(rowlines)
+    rowlines = true; %default: draw the row lines on the single-condition heatmaps
 end
-if islogical(normto)
-    if normto, normto = 3; else, normto = "none"; end
-elseif isnumeric(normto) && normto == 0
-    normto = "none";
-end
-if isnumeric(normto)
-    assert(isscalar(normto) && ismember(normto,1:5), 'normto must be a column 1-5, "peak" or "none"')
-    normtxt = sprintf('normalized to column %s', offsetLabel(offsets(normto)));
-else
-    normto = lower(string(normto));
-    assert(ismember(normto,["peak","none"]), 'normto must be a column 1-5, "peak" or "none"')
-    normtxt = 'normalized to each line''s peak column';
-end
-shownorm = ~(isstring(normto) && normto == "none");
+rowlines = logical(rowlines);
 if nargin < 7 || isempty(save_png)
     save_png = false;
 end
@@ -284,35 +276,39 @@ T.col = T.Chan_Shank - topshank(aidx)' + 3;
 T = T(T.col >= 1 & T.col <= 5 & T.Chan_Depth >= 1 & T.Chan_Depth <= maxdepth, :);
 na = numel(animals);
 
-%% save_png: choose the file-name prefix before anything is plotted
+%% save_png: choose the file name before anything is plotted (the whole default name is shown and editable)
 if save_png
     if ~isfolder(savebase)
         mkdir(savebase);
     end
-    answer = inputdlg('File-name prefix:', 'Save PNGs', [1 60], {sprintf('n%d', na)});
-    if isempty(answer)
-        error('plotLWTTXCompare_multianimal: stopped by the user (no file-name prefix)')
+    savename = sprintf('n%d_%s_LvsLW_TTX', na, region); %default: n<animals>_<area>_LvsLW_TTX
+    namehelp = sprintf(['File name (the feature is added): <name>_<feature>.png and .txt\n' ...
+        'Folder: %s\nWith this name: %s_%s.png'], savebase, savename, features(1));
+    answer = inputdlg(namehelp, 'Save PNGs', [1 80], {savename});
+    if isempty(answer) || isempty(strtrim(answer{1}))
+        error('plotLWTTXCompare_multianimal: stopped by the user (no file name)')
     end
-    prefix = strtrim(answer{1});
-    %if any file exists: Overwrite (same-name files are replaced), Quit, or Edit Prefix (checked again)
+    savename = strtrim(answer{1});
+    %if any file exists: Overwrite (same-name files are replaced), Quit, or Edit Name (checked again)
     while true
-        pngnames = fullfile(savebase, prefix + "_" + region + "_LvsLW_TTX_" + features + ".png");
-        existing = pngnames(isfile(pngnames));
+        outnames = fullfile(savebase, savename + "_" + features + [".png"; ".txt"]);
+        existing = outnames(isfile(outnames));
         if isempty(existing)
             break
         end
-        choice = questdlg(sprintf('%d of the PNG files already exist, e.g.\n%s', numel(existing), existing(1)), ...
-            'Files already exist', 'Overwrite', 'Quit', 'Edit Prefix', 'Quit');
+        choice = questdlg(sprintf('%d of the output files already exist, e.g.\n%s', numel(existing), existing(1)), ...
+            'Files already exist', 'Overwrite', 'Quit', 'Edit Name', 'Quit');
         switch choice
             case 'Overwrite'
                 break
-            case 'Edit Prefix'
-                answer = inputdlg('New file-name prefix:', 'Edit prefix', [1 60], {prefix});
+            case 'Edit Name'
+                answer = inputdlg(sprintf('New file name (the feature is added):\n<name>_<feature>.png and .txt in %s', savebase), ...
+                    'Edit name', [1 80], {savename});
                 if ~isempty(answer) && ~isempty(strtrim(answer{1}))
-                    prefix = strtrim(answer{1}); %checked again by the loop
+                    savename = strtrim(answer{1}); %checked again by the loop
                 end
             otherwise %Quit, or the dialog was closed
-                error('plotLWTTXCompare_multianimal: stopped by the user (PNG files with prefix %s already exist)', prefix)
+                error('plotLWTTXCompare_multianimal: stopped by the user (files named %s_<feature> already exist)', savename)
         end
     end
 end
@@ -425,10 +421,10 @@ end
 for fi = 1:numel(features)
     feat = features(fi);
 
-    %single conditions: per-animal means (animals x depth x 5), heatmaps, n, row lines
+    %single conditions: per-animal means (animals x depth x 5), heatmaps, n
     conds = [cL cLW cLt cLWt];
     cnd = struct('name',cellstr(conds));
-    allG = [];  devs = [];
+    allG = [];
     for i = 1:numel(conds)
         M = NaN(na,maxdepth,5);
         for a = 1:na
@@ -438,12 +434,7 @@ for fi = 1:numel(features)
         cnd(i).map = M;
         cnd(i).heat = reshape(mean(M,1,'omitnan'), maxdepth, 5);
         cnd(i).n = reshape(sum(any(~isnan(M),2),1), 1, 5);
-        allG = [allG; cnd(i).heat(:)]; %#ok<AGROW>
-        %row lines: line = mean over animals, points = each animal, both / the line's reference
-        if shownorm
-            [cnd(i).row, cnd(i).pts] = rowLines(M, cnd(i).heat, normto);
-            devs = [devs; cnd(i).row(:); cnd(i).pts(:)]; %#ok<AGROW>
-        end
+        allG = [allG; cnd(i).heat(:)];
     end
 
     %ratio tiles B / A: per animal and cell, animal's mean of B / animal's mean of A (1 value per animal);
@@ -526,41 +517,52 @@ for fi = 1:numel(features)
     h = [cmp.heat];
     cmax = max(abs(h(:)),[],'omitnan');
     if isempty(cmax) || isnan(cmax) || cmax == 0, cmax = 1; end
-    k = 0; %row-line scale shared by the 4 single-condition tiles
-    if shownorm
-        maxdev = max(abs(devs - 1),[],'omitnan');
-        if ~isempty(maxdev) && ~isnan(maxdev) && maxdev > 0
-            k = linefill / maxdev;
-        end
-    end
 
-    %figure
-    ttl = {sprintf('%s (%s): L vs LW at 8 uW, before and with TTX, %d animals', feat, region, na), ...
-        sprintf('aligned on each animal''s top %s shank (column "top"), Chan_Depth 1-%d', alignlabel, maxdepth)};
-    if ~isempty(filtertxt)
-        ttl{end+1} = filtertxt; %#ok<AGROW>
+    %short figure title; the run information goes to data.info (and to the .txt file with save_png)
+    ttl = sprintf('%s Response to L vs LW with TTX: %s (n = %d)', region, feat, na);
+    info = string(ttl); %#ok<*AGROW> (info grows line by line, a dozen lines)
+    info(end+1) = "created " + string(datetime('now','Format','yyyy-MM-dd HH:mm')) + " by plotLWTTXCompare_multianimal";
+    info(end+1) = "summary table: " + tablesource;
+    info(end+1) = sprintf('region %s; conditions %s (8 uW, before and with TTX)', region, strjoin(conds,', '));
+    info(end+1) = sprintf('aligned on each animal''s top %s shank (column "top"); rows = Chan_Depth 1-%d', alignlabel, maxdepth);
+    info(end+1) = "animals (top shank): " + strjoin(animals + " (" + string(topshank) + ")", ', ');
+    if isempty(filtertxt)
+        info(end+1) = "trials: no trial filter (" + nafter + " table rows)";
+    else
+        info(end+1) = filtertxt;
     end
-    if shownorm && k > 0
-        ttl{end+1} = sprintf('single-condition row lines: mean over animals, %s; o = animals; half a row = %.0f%% change', normtxt, 100*0.5/k); %#ok<AGROW>
+    info(end+1) = "single conditions: mean over animals of each animal's per-position mean over trials; n = animals with data per column";
+    info(end+1) = "ratios B / A: mean over animals of each animal's mean B / mean A (NaN where the A mean is 0); ratio comparisons: mean over animals of the difference of two animal ratios";
+    info(end+1) = "colour scales: the 4 single-condition tiles share one green scale; LW / L tiles share one blue-white-red scale (white = 1); TTX / before tiles share another (white = 1); ratio comparisons share one symmetric scale (white = 0)";
+    info(end+1) = "row 1: shank-score lines per animal and mean channel scores, / centre-shank score (" + labres(1).name + ", " + ...
+        labres(2).name + "), / largest |shank score| (" + labres(3).name + ")";
+    if rowlines
+        info(end+1) = "single-condition row lines: per row, the mean over animals across the 5 columns, stretched so the row's min / max sit at 20% / 80% of the row height (shape only; colour gives the size)";
+    else
+        info(end+1) = "single-condition row lines: off";
     end
-    ttl{end+1} = 'ratios B / A: mean over animals of each animal''s mean B / mean A (white = 1)'; %#ok<AGROW>
-    ttl{end+1} = 'ratio comparisons: mean over animals of the difference of two animal ratios (white = 0)'; %#ok<AGROW>
     if do_stats
-        ttl{end+1} = sprintf('stats: ratio tiles rank-sum B vs A trials per cell (animals pooled); comparisons one-sample t-test of the %d animal values vs 0', na); %#ok<AGROW>
-        ttl{end+1} = sprintf('number = %s; * < 0.05, ** < 0.01, *** < 0.001', ternary(use_fdr,'BH-FDR adjusted p per tile','p')); %#ok<AGROW>
+        info(end+1) = sprintf('ratio-tile statistics: per cell, rank-sum test of B vs A trial values (animals pooled, at least %d trials each)', min_trials);
+        info(end+1) = sprintf('ratio-comparison statistics: per cell, one-sample t-test of the animal differences against 0 (at least %d animals)', min_animals);
+        info(end+1) = sprintf('number = %s; * < 0.05, ** < 0.01, *** < 0.001', ternary(use_fdr,'BH-FDR adjusted p over the cells of each tile','p'));
+    else
+        info(end+1) = "statistics: off";
     end
     figs(end+1) = figure('Name',sprintf('%s (%s): L vs LW with TTX, %d animals',feat,region,na),'Color','w', ...
-        'Units','pixels','Position',[40 30 1150 1250]); %#ok<AGROW> (fits a ~1300 px high screen)
-    tl = tiledlayout(figs(end),5,4,'TileSpacing','compact','Padding','compact');
+        'Units','pixels','Position',[40 30 1150 1250]); %(fits a ~1300 px high screen)
+    %21 x 4 grid: row 1 spans 5 grid rows, rows 2-5 4 each (row 1 = 1.25 x the others)
+    tl = tiledlayout(figs(end),21,4,'TileSpacing','compact','Padding','compact');
     title(tl,ttl,'Interpreter','none');
+    tileAt = @(R,c) 4*(6 + 4*(R-2) - 1) + c; %tile index of figure row R (2-5), column c in the 21 x 4 grid
 
-    %row 1: activity labels (nested 4 x 1 layout per label: line plot + heatmap), columns 1-3
+    %row 1: activity labels (nested 5 x 1 layout per label: line plot 2/5 + heatmap 3/5), columns 1-3
     for L = 1:3
-        ntl = tiledlayout(tl,4,1,'TileSpacing','compact');
+        ntl = tiledlayout(tl,5,1,'TileSpacing','compact');
         ntl.Layout.Tile = L;
+        ntl.Layout.TileSpan = [5 1];
         title(ntl,labres(L).name,'Interpreter','none');
         if L == 1, cmap = orangemap; else, cmap = greenmap; end
-        axS = nexttile(ntl,1);
+        axS = nexttile(ntl,1,[2 1]);
         hold(axS,'on');
         for a = 1:na
             plot(axS,1:5,labres(L).scores(a,:),'-o','LineWidth',1.5,'MarkerSize',5,'Color',acol(a,:), ...
@@ -577,7 +579,7 @@ for fi = 1:numel(features)
             lg = legend(axS,'Interpreter','none','FontSize',7,'Orientation','horizontal','NumColumns',min(na,3));
             lg.Layout.Tile = 'north'; %above the line plot, so it covers no data
         end
-        axH = nexttile(ntl,2,[3 1]);
+        axH = nexttile(ntl,3,[3 1]);
         drawHeat(axH, labres(L).heat, cmap, [], labres(L).n);
         cb = colorbar(axH);
         cb.Layout.Tile = 'east';
@@ -590,18 +592,18 @@ for fi = 1:numel(features)
         linkaxes([axS axH],'x');
     end
 
-    %rows 2-3, columns 1-2: single conditions (tile = 4*(row-1) + column)
-    singletile = [5 6 9 10]; %L_8, LW_8, L_8_TTX, LW_8_TTX
+    %rows 2-3, columns 1-2: single conditions (each tile spans 4 grid rows)
+    singletile = [tileAt(2,1) tileAt(2,2) tileAt(3,1) tileAt(3,2)]; %L_8, LW_8, L_8_TTX, LW_8_TTX
     axC = gobjects(1,4);
     for i = 1:4
-        axC(i) = drawHeat(nexttile(tl,singletile(i)), cnd(i).heat, greenmap, climG, cnd(i).n, cnd(i).name);
-        if shownorm && k > 0
-            drawRowLines(axC(i), cnd(i).row, cnd(i).pts, k);
+        axC(i) = drawHeat(nexttile(tl,singletile(i),[4 1]), cnd(i).heat, greenmap, climG, cnd(i).n, cnd(i).name);
+        if rowlines
+            drawRowLines(axC(i), cnd(i).heat);
         end
     end
     ylabel(axC(1),'Chan\_Depth');  ylabel(axC(3),'Chan\_Depth');
     %ratio tiles: row 2 col 3, row 3 col 3, row 4 cols 1-2
-    rattile = [7 11 13 14];
+    rattile = [tileAt(2,3) tileAt(3,3) tileAt(4,1) tileAt(4,2)];
     axR = gobjects(1,4);
     for j = 1:4
         if do_stats
@@ -610,14 +612,14 @@ for fi = 1:numel(features)
             rttl = char(rat(j).name);
         end
         g = rat(j).scale;
-        axR(j) = drawHeat(nexttile(tl,rattile(j)), rat(j).heat, divmap, 1 + [-rmax(g) rmax(g)], rat(j).n, rttl);
+        axR(j) = drawHeat(nexttile(tl,rattile(j),[4 1]), rat(j).heat, divmap, 1 + [-rmax(g) rmax(g)], rat(j).n, rttl);
         if do_stats && ~all(isnan(rat(j).heat),'all')
             drawStats(axR(j), rat(j).q, rat(j).heat, 1, rmax(g), alpha);
         end
     end
     ylabel(axR(3),'Chan\_Depth');
     %ratio comparisons: row 4 col 4 (compares row 4 cols 2 and 1), row 5 col 3 (compares col 3 rows 3 and 2)
-    cmptile = [16 19];
+    cmptile = [tileAt(4,4) tileAt(5,3)];
     axK = gobjects(1,2);
     for j = 1:2
         if do_stats
@@ -625,21 +627,24 @@ for fi = 1:numel(features)
         else
             kttl = char(cmp(j).name);
         end
-        axK(j) = drawHeat(nexttile(tl,cmptile(j)), cmp(j).heat, divmap, [-cmax cmax], cmp(j).n, kttl);
+        axK(j) = drawHeat(nexttile(tl,cmptile(j),[4 1]), cmp(j).heat, divmap, [-cmax cmax], cmp(j).n, kttl);
         if do_stats && ~all(isnan(cmp(j).heat),'all')
             drawStats(axK(j), cmp(j).q, cmp(j).heat, 0, cmax, alpha);
         end
     end
     xlabel(axR(3),'Shank relative to the top-ranked shank');
     %colourbars in empty tiles (a colourbar next to a heatmap would shrink every tile of the layout)
-    cbarTile(tl, 8, greenmap, climG, feat + " (mean of animal means)");
-    cbarTile(tl, 12, divmap, 1 + [-rmax(1) rmax(1)], "LW / L ratio (mean of animal ratios)");
-    cbarTile(tl, 15, divmap, 1 + [-rmax(2) rmax(2)], "TTX / before ratio (mean of animal ratios)");
-    cbarTile(tl, 20, divmap, [-cmax cmax], "difference of ratios (mean over animals)");
+    cbarTile(tl, tileAt(2,4), greenmap, climG, feat + " (mean of animal means)");
+    cbarTile(tl, tileAt(3,4), divmap, 1 + [-rmax(1) rmax(1)], "LW / L ratio (mean of animal ratios)");
+    cbarTile(tl, tileAt(4,3), divmap, 1 + [-rmax(2) rmax(2)], "TTX / before ratio (mean of animal ratios)");
+    cbarTile(tl, tileAt(5,4), divmap, [-cmax cmax], "difference of ratios (mean over animals)");
 
-    %save_png: <savebase>\<prefix>_<area>_LvsLW_TTX_<feature>.png
+    %save_png: <savebase>\<name>_<feature>.png and .txt (the run information)
     if save_png
-        exportgraphics(figs(end), fullfile(savebase, prefix + "_" + region + "_LvsLW_TTX_" + feat + ".png"), 'Resolution', 150);
+        exportgraphics(figs(end), fullfile(savebase, savename + "_" + feat + ".png"), 'Resolution', 150);
+        fid = fopen(fullfile(savebase, savename + "_" + feat + ".txt"), 'w');
+        fprintf(fid, '%s\n', info);
+        fclose(fid);
     end
 
     data(fi).feature = feat;
@@ -647,7 +652,8 @@ for fi = 1:numel(features)
     data(fi).alignlabel = alignlabel;
     data(fi).stimlabels = stimlabels;
     data(fi).trialfilter = trialfilter;
-    data(fi).normto = normto;
+    data(fi).rowlines = rowlines;
+    data(fi).info = info;
     data(fi).animals = animals;
     data(fi).topshank = topshank;
     data(fi).labels = labres;
@@ -693,18 +699,6 @@ sub = T.Animal_Name == animal & T.Condition_Name == cond;
 M = accumarray([T.Chan_Depth(sub) T.col(sub)], T.(feat)(sub), [nrow 5], @(x) mean(x,'omitnan'), NaN);
 end
 
-function [rowN, ptsN] = rowLines(map, heat, normto)
-%row lines: each row of heat (mean over animals) / its reference (column normto, or its peak);
-%points: each animal's values (map, animals x rows x 5) / the same reference, so a line is the mean of its points
-if isnumeric(normto)
-    ref = heat(:,normto);
-else
-    ref = max(heat,[],2,'omitnan');
-end
-rowN = heat ./ ref;
-ptsN = map ./ reshape(ref,1,[]);
-end
-
 function Q = bhAdjust(P)
 %Benjamini-Hochberg adjusted p-values (same size as P; NaN = not tested)
 Q = NaN(size(P));
@@ -743,20 +737,22 @@ if all(isnan(M),'all')
 end
 end
 
-function drawRowLines(ax, rowN, ptsN, k)
-%per row: dotted reference line (value 1 at the row centre), each animal's point (o), mean line on top
+function drawRowLines(ax, heat)
+%per heatmap row: the row's values across the columns as a line, stretched so its min / max sit at
+%20% / 80% of the row height (higher values up; a flat row at the row centre). Shape only.
 hold(ax,'on');
-[nrow,ncols] = size(rowN);
+[nrow,ncols] = size(heat);
 for r = 1:nrow
-    if all(isnan(rowN(r,:))), continue, end
-    plot(ax,[0.5 ncols+0.5],[r r],':','Color',[0.35 0.35 0.35],'LineWidth',0.5);
-    y = r - (rowN(r,:) - 1)*k;
-    plot(ax,1:ncols,y,'-','Color','w','LineWidth',3); %white underlay, visible on dark cells
-    for a = 1:size(ptsN,1)
-        plot(ax,1:ncols, r - (squeeze(ptsN(a,r,:))' - 1)*k, 'o','Color','k','MarkerSize',3.5, ...
-            'MarkerFaceColor','w','LineWidth',0.7);
+    v = heat(r,:);
+    if all(isnan(v)), continue, end
+    lo = min(v,[],'omitnan');  hi = max(v,[],'omitnan');
+    if hi > lo
+        y = r + 0.3 - 0.6*(v - lo)/(hi - lo);
+    else
+        y = r + zeros(size(v));
     end
-    plot(ax,1:ncols,y,'-','Color','k','LineWidth',1.4);
+    plot(ax,1:ncols,y,'-','Color','w','LineWidth',3); %white underlay, visible on dark cells
+    plot(ax,1:ncols,y,'-o','Color','k','LineWidth',1.4,'MarkerSize',3,'MarkerFaceColor','k');
 end
 end
 
@@ -783,8 +779,9 @@ end
 end
 
 function cbarTile(tl, tile, cmap, lims, label)
-%horizontal colourbar alone in an empty tile of the layout (hidden axes carry the colour map and limits)
-ax = nexttile(tl, tile);
+%horizontal colourbar alone in an empty tile of the layout, spanning 4 grid rows like the heatmap
+%tiles of rows 2-5 (hidden axes carry the colour map and limits)
+ax = nexttile(tl, tile, [4 1]);
 colormap(ax, cmap);
 clim(ax, lims);
 axis(ax, 'off');
