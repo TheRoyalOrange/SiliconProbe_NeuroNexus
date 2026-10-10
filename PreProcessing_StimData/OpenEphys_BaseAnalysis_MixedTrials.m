@@ -60,11 +60,23 @@
 %     LFP.mat - mat file containing: 
 %               stim_lfp_stimchunks - 3D array of lfp data split into
 %                                     trials. Data is downsampled to 1kHz
-%                                     from original 30kHz in the recording.
+%                                     from original 30kHz in the recording, after a
+%                                     300 Hz low-pass (4th-order Butterworth,
+%                                     zero-phase filtfilt) to prevent aliasing. In uV.
 %                                     size[trials x trial length x channels] 
-%                  stim_times - vector of stimulus onset timepoints from raw
-%                               data.  size[trials]
-%                  tr_keep  -  vector of trials considered "good" according to 
+%                  stim_times - stimulus onsets of this condition's trials, all
+%                               groups, in the same order as stim_lfp_stimchunks.
+%                               Each is in 1kHz samples of its OWN recording
+%                               (see stim_group). size[trials x 1]
+%                               Onsets are found as TTL rising edges at 30kHz
+%                               (same lines as the MUA section, so LFP and MUA
+%                               trials match) and converted to the first kept
+%                               1kHz sample at or after each onset (0-0.97 ms
+%                               after the true onset)
+%                  stim_group - recording (index into the directories chosen
+%                               via uipickfiles) each trial came from.
+%                               size[trials x 1]
+%                  tr_keep  -  vector of trials considered "good" according to
 %                              user. By default, this contains all trials and
 %                              is modified later from a different script
 %                              size[trials]
@@ -106,16 +118,46 @@
 %                                                   no spike or spike. Data is in original 30kHz
 %                                                   sampling rate.
 %                                                   size[trials x 30kHz trial length x channels]
-%                                                 
-%                           tr_keep  - vector of trials considered "good" according to 
+%                           stim_times_30k - stimulus onsets (first high TTL sample
+%                                            of each pulse) of this condition's trials,
+%                                            all groups, in the same order as
+%                                            stim_spike_stimchunks. Each is in 30kHz
+%                                            samples of its OWN recording. size[trials x 1]
+%                           stim_group - recording (index into the chosen
+%                                        directories) each trial came from. size[trials x 1]
+%
+%                           tr_keep  - vector of trials considered "good" according to
 %                                      user. By default, this contains all trials and
 %                                      is modified later from a different script
 %                                      size[trials]
 %                           tr_remove - the complement to tr_keep. By default this is
 %                                       left empty and modified later by a differen
 %                                       script size[empty]
-% 
-%    
+%
+%    Run report - printed in the command window at the end of the run: animal,
+%              run start/end, condition (stim, stim_num), trial counts over all
+%              groups (LFP, MUA, kept), per group the raw folder, stim detection
+%              summary from stimcheck (stimuli found vs. trials of this condition,
+%              LFP vs MUA match), and the result files written by this run
+%              (expected file names modified after runstart).
+%    runreport (struct, workspace only - not saved) - fields .stim, .stim_num,
+%              .recording (cell, raw folder of each group), .areas (ProbeInfo.Areas),
+%              .ntrials_lfp, .ntrials_mua, .ntrials_kept (numel(tr_keep) at saving),
+%              .nselected_lfp / .nselected_mua (1 x groups, trials of this condition);
+%              [] = not run
+%    runstart (datetime) - start of the run
+%    stimcheck (struct array, 1 x groups, workspace only - not saved) - stim
+%              detection info for a post-run report. Fields:
+%                .recording (string) - directory of the group's recording
+%                .lfp / .mua (struct, from the LFP / MUA section) with fields
+%                  .stim_times (double, onsets x 1) - onsets kept, ALL conditions [30kHz samples]
+%                  .pulse_width (double, onsets x 1) - their TTL pulse widths [30kHz samples]
+%                  .glitch_times, .glitch_width - TTL high periods shorter than
+%                    min_pulse_width (10 samples), ignored as glitches
+%              The script stops with an error if a group's number of stimuli
+%              differs from numel(stim_Index).
+%
+%
 %    [Note: all output figures also have brain area added to prefix
 %    animal-stim-area(i)]
 %    
@@ -161,6 +203,8 @@
 clear all
 close all
 tic
+runstart = datetime('now'); %result files written after this are listed in the post-run report
+stimcheck = []; %stim detection info per group (onsets, pulse widths, ignored glitches) for the post-run report
 %% NEEDS INPUT FIRST:  SET UP ANALYSIS INFO
 %where is the data stored?
 load_directory = 'E:\Roy\Silicon Probe Raw Data\20260803-p12'; %recommend to choose folder for whole experiment
@@ -423,6 +467,16 @@ for i = 1:length(ProbeInfo.poi)
     poilayoutT{i} = reshape(poilayout{i}',1,[]);
     poimapT{i} = cell2mat(ProbeInfo.ProbeMaps(ProbeInfo.poi(i)))';
 end
+%recording info for the post-run report (trial counts are filled in by the sections that run; [] = not run)
+runreport.stim = stim;
+runreport.stim_num = stim_num;
+runreport.recording = directory; %raw recording folder of each group
+runreport.areas = ProbeInfo.Areas; %part of the figure file names
+runreport.ntrials_lfp = [];
+runreport.ntrials_mua = [];
+runreport.ntrials_kept = [];
+runreport.nselected_lfp = []; %trials of this condition in each group
+runreport.nselected_mua = [];
 
 
 
@@ -437,38 +491,101 @@ end
 if LFP == 1 || CSD == 1 || TF == 1 || TrRemove == 1 || MUAmyfault == 1 || ChRemove == 1
 disp('Loading LFP Data')
 
+%low-pass for the LFP before downsampling (zero-phase, so no time shift): removes everything above
+%lfp_cutoff so nothing above 500 Hz folds into the 1kHz data
+lfp_cutoff = 300; %Hz
+[z,p,k] = butter(4, lfp_cutoff/(30000/2), 'low'); %4th order, run forward and backward by filtfilt (-6 dB at lfp_cutoff)
+[lfp_sos, lfp_g] = zp2sos(z,p,k); %second-order sections: numerically stable at this low cutoff/fs ratio
+stim_times_groups = {}; %selected onsets of each group (recording), joined after the loop
+
 for group = 1:size(directory,2)
     clear data
     session = Session(directory{group});
 
     %Get all pieces of recording and concatenate (if recording was paused then
     %unpaused, you can have multiple files for a single recording)
+    ttl30 = {}; seglen1k = [];
     for i = 1:size(session.recordNodes{1,1}. recordings,2)
         datums = session.recordNodes{1,1}. recordings{1,i}.continuous('Acquisition_Board-100.acquisition_board').samples;
         %datums = session.recordNodes{1,1}. recordings{1,i}.continuous('Acquisition_Board-100.Rhythm Data').samples;
-        datums = downsample(datums',30)'; %to 1kH, each timepoint is 1 ms
-        datums = double(datums).*0.1950; %converts int16 to uV
-        data{i} = datums;
-    
+        ttl30{i} = double(datums(ProbeInfo.TTLch,:)).*0.1950; %TTL at 30kHz, kept for stim detection before downsampling
+        %filter and downsample one channel at a time (the whole recording at 30kHz in double would be ~18 GB)
+        lfp1k = zeros(size(datums,1), ceil(size(datums,2)/30));
+        for ch = 1:size(datums,1)
+            chdat = double(datums(ch,:)).*0.1950; %converts int16 to uV
+            if ismember(ch, ProbeInfo.ChanIds) %recording channels only; the TTL row is left unfiltered
+                chdat = filtfilt(lfp_sos, lfp_g, chdat);
+            end
+            lfp1k(ch,:) = downsample(chdat,30); %to 1kH, each timepoint is 1 ms
+        end
+        data{i} = lfp1k;
+        seglen1k(i) = size(lfp1k,2); %length of this piece after downsampling
     end
     data = horzcat(data{:}); %shape is total channels (normal + TTL) x timepoints
-    clear datums
+    clear datums lfp1k chdat
 
 disp('Done')
 
 %% Find Stim Timepoints: check signal
 
 %% Find Stim Timepoints: Get indices for stim onset
-stimdat = data(129,:); %get the adc data (stimulator trigger-out signal)
-%stimdat = data(chans,:); %get the adc data (stimulator trigger-out signal)thresh = 100; %name a threshold value that indicates a stim trigger
-thresh = 500; %name a threshold value that indicates a stim trigger
-up_thresh = stimdat >thresh; %find all the points above threshold
-up_idx = find(up_thresh); %get indices of those points
-cross_thresh = stimdat(up_idx - 1)< thresh; %now find which ones are preceded by a below threshold value
+%OLD (replaced by the 30kHz detection below): fixed threshold on the 1kHz TTL. It was used instead of the
+%==1 method further down because ==1 missed pulses when the kept 1kHz sample fell on a pulse edge (44 of 45
+%in 20260607-p12 mixed_7 and mixed_10LowActivity); a threshold of 500 makes that less likely but not impossible
+% stimdat = data(129,:); %get the adc data (stimulator trigger-out signal)
+% %stimdat = data(chans,:); %get the adc data (stimulator trigger-out signal)thresh = 100; %name a threshold value that indicates a stim trigger
+% thresh = 500; %name a threshold value that indicates a stim trigger
+% up_thresh = stimdat >thresh; %find all the points above threshold
+% up_idx = find(up_thresh); %get indices of those points
+% cross_thresh = stimdat(up_idx - 1)< thresh; %now find which ones are preceded by a below threshold value
+%
+% stim_times = up_idx(cross_thresh == 1); %now you have stimulus onset times
+% %numstims3(group) = length(stim_times);
+% stim_times = stim_times(stim_Index == stim_num)';
 
-stim_times = up_idx(cross_thresh == 1); %now you have stimulus onset times
-%numstims3(group) = length(stim_times);
-stim_times = stim_times(stim_Index == stim_num)';
+%stimuli are found on the 30kHz TTL (same lines as the MUA section, so LFP and MUA get the same trials),
+%then converted to 1kHz samples
+ttl30_all = horzcat(ttl30{:}); %whole recording's TTL at 30kHz
+ttl_high = ttl30_all' >= 0.5*max(ttl30_all); %TTL above half its max = pulse on [30kHz timepoints x 1]
+clear ttl30_all
+stim_times = find(diff(ttl_high)>0)+1; %rising edges: first high sample of each pulse (stimulus onset)
+pulse_ends = find(diff(ttl_high)<0)+1; %falling edges: first low sample after each pulse
+%width of each pulse in samples (NaN if the recording ends while the TTL is still high)
+pulse_width = nan(size(stim_times));
+for i = 1:length(stim_times)
+    nextend = pulse_ends(find(pulse_ends > stim_times(i),1));
+    if ~isempty(nextend)
+        pulse_width(i) = nextend - stim_times(i);
+    end
+end
+%ignore glitches: real TTL pulses are ~30 samples (1 ms), anything much shorter is not a stimulus
+min_pulse_width = 10; %samples (0.33 ms at 30kHz)
+glitch = pulse_width < min_pulse_width;
+%keep detection info for the post-run report (nothing printed here)
+stimcheck(group).recording = directory{group};
+stimcheck(group).lfp.stim_times = stim_times(~glitch);    %onsets kept, all conditions [30kHz samples]
+stimcheck(group).lfp.pulse_width = pulse_width(~glitch);  %their pulse widths [30kHz samples]
+stimcheck(group).lfp.glitch_times = stim_times(glitch);   %onsets ignored as glitches [30kHz samples]
+stimcheck(group).lfp.glitch_width = pulse_width(glitch);
+stim_times = stim_times(~glitch);
+%every trial needs a condition label, otherwise the labels after a missing/extra onset land on the wrong trials
+assert(numel(stim_times) == numel(stim_Index), ...
+    'LFP: %s has %d stimuli but stim_Index has %d labels', directory{group}, numel(stim_times), numel(stim_Index))
+
+%convert onsets to 1kHz samples. downsample keeps samples 1,31,61,... of each recording piece, so take the
+%first kept sample at or after the onset (the same sample the old ==1 detection picked). Done per piece
+%because piece lengths are not multiples of 30
+seg_start30 = cumsum([0 cellfun(@numel,ttl30)]);
+seg_start1k = cumsum([0 seglen1k]);
+for k = 1:length(stim_times)
+    seg = find(stim_times(k) > seg_start30,1,'last');
+    stim_times(k) = ceil((stim_times(k)-seg_start30(seg)-1)/30) + 1 + seg_start1k(seg);
+end
+clear ttl30 seglen1k seg_start30 seg_start1k seg ttl_high pulse_ends nextend glitch pulse_width
+
+stim_times = stim_times(stim_Index == stim_num); %this run's condition [trials x 1]
+stim_times_groups{group} = stim_times;
+runreport.nselected_lfp(group) = numel(stim_times); %for the post-run report
 
 
 
@@ -535,9 +652,13 @@ stim_lfp_stimchunks = [];
 for group = 1:size(stim_lfp_stimchunks_groups,1)
     stim_lfp_stimchunks = cat(1,stim_lfp_stimchunks,squeeze(stim_lfp_stimchunks_groups(group,:,:,:))); %with dimensions [trials of condition x epoch length x channels]
 end
+%onsets of all groups in the same trial order as stim_lfp_stimchunks (each in 1kHz samples of its own recording)
+stim_times = vertcat(stim_times_groups{:}); %[trials x 1]
+stim_group = repelem((1:numel(stim_times_groups))', cellfun(@numel,stim_times_groups)); %recording (index into directory) of each trial [trials x 1]
 
 tr_remove = []; %list of trials to remove (recommended not to change at this point)
 tr_keep = 1:size(stim_lfp_stimchunks,1); %list of trials to keep (should be disjoint from tr_remove). Initialize as all trials
+runreport.ntrials_lfp = size(stim_lfp_stimchunks,1); %for the post-run report
 
 %% In case channel order from GUI is wrong, change it here
 if reorder == 1
@@ -1028,8 +1149,9 @@ end
 if LFP == 1
  disp('LFP: Saving LFP results')
 
+    runreport.ntrials_kept = numel(tr_keep); %after any trial removal (for the post-run report)
     fname = sprintf([animal '-' stim '-' 'LFP']);
-    save([save_directory '\LFP\' animal '\'  fname], 'stim_lfp_stimchunks', 'stim_times', 'tr_remove', 'tr_keep');     
+    save([save_directory '\LFP\' animal '\'  fname], 'stim_lfp_stimchunks', 'stim_times', 'stim_group', 'tr_remove', 'tr_keep');     
     
 
 end
@@ -1512,7 +1634,7 @@ end
 
 end
 %% plot TF and ITPC in probe layout
-if showme == 1
+if showme == 1 && TF == 1
 disp('TF: Plotting TF and ITPC results for you :)')   
 
 % convert to decibal and calculate avg (just for plotting purposes)
@@ -1713,9 +1835,10 @@ end
 disp('Sorry, for space reasons I will be closing all plots now. Please complain to Roy if you really hate this and think hes dumb for doing it.')
 disp('(by the way, if you selected the save plots option, then you can just go open them again)')
 close all
+end
 
-%%
-
+%% Save TF results
+if TF == 1
 disp('TF: Saving TF results')
 fname = sprintf([animal '-' stim  '_TF_results','.mat']);
 save([save_directory '\TF\' animal '\'  fname], 'stim_tf', 'tr_remove','tr_keep', '-v7.3');
@@ -1777,8 +1900,9 @@ if MUA == 1
 disp('MUA: Beginning MUA analysis')
 disp('MUA: Loading data')
 clear data
+stim_times_30k_groups = {}; %selected onsets of each group (recording), joined after the loop
 for group = 1:size(directory,2)
-    
+
     session = Session(directory{group});
 
     for i = 1:size(session.recordNodes{1,1}. recordings,2)
@@ -1797,12 +1921,35 @@ for group = 1:size(directory,2)
 %stimdat = data(97,:); %get the adc data (stimulator trigger-out signal)
 disp('MUA: Finding stim timepoints')
 
-figure(); plot(data(ProbeInfo.TTLch,:)'); 
-normbineTTL = round(data(ProbeInfo.TTLch,:)'./max(data(ProbeInfo.TTLch,:)'));
-stim_times = find(diff(normbineTTL)>0);
-stim_times = stim_times(stim_Index == stim_num);
-
-clear normbineTTL
+figure(); plot(data(ProbeInfo.TTLch,:)');
+ttl_high = data(ProbeInfo.TTLch,:)' >= 0.5*max(data(ProbeInfo.TTLch,:)); %TTL above half its max = pulse on [timepoints x 1]
+stim_times = find(diff(ttl_high)>0)+1; %rising edges: first high sample of each pulse (stimulus onset)
+pulse_ends = find(diff(ttl_high)<0)+1; %falling edges: first low sample after each pulse
+%width of each pulse in samples (NaN if the recording ends while the TTL is still high)
+pulse_width = nan(size(stim_times));
+for i = 1:length(stim_times)
+    nextend = pulse_ends(find(pulse_ends > stim_times(i),1));
+    if ~isempty(nextend)
+        pulse_width(i) = nextend - stim_times(i);
+    end
+end
+%ignore glitches: real TTL pulses are ~30 samples (1 ms), anything much shorter is not a stimulus
+min_pulse_width = 10; %samples (0.33 ms at 30kHz)
+glitch = pulse_width < min_pulse_width;
+%keep detection info for the post-run report (nothing printed here)
+stimcheck(group).recording = directory{group};
+stimcheck(group).mua.stim_times = stim_times(~glitch);    %onsets kept, all conditions [30kHz samples]
+stimcheck(group).mua.pulse_width = pulse_width(~glitch);  %their pulse widths [30kHz samples]
+stimcheck(group).mua.glitch_times = stim_times(glitch);   %onsets ignored as glitches [30kHz samples]
+stimcheck(group).mua.glitch_width = pulse_width(glitch);
+stim_times = stim_times(~glitch);
+clear ttl_high pulse_ends nextend glitch pulse_width
+%every trial needs a condition label, otherwise the labels after a missing/extra onset land on the wrong trials
+assert(numel(stim_times) == numel(stim_Index), ...
+    'MUA: %s has %d stimuli but stim_Index has %d labels', directory{group}, numel(stim_times), numel(stim_Index))
+stim_times = stim_times(stim_Index == stim_num); %this run's condition [trials x 1]
+stim_times_30k_groups{group} = stim_times;
+runreport.nselected_mua(group) = numel(stim_times); %for the post-run report
 %% filter 
 disp('MUA: Filtering out low frequencies')
 
@@ -1906,6 +2053,9 @@ stim_spike_stimchunks = [];
 for group = 1:size(stim_spike_stimchunks_group,1)
     stim_spike_stimchunks = cat(1,stim_spike_stimchunks, squeeze(stim_spike_stimchunks_group(group,:,:,:)));
 end
+%onsets of all groups in the same trial order as stim_spike_stimchunks (each in 30kHz samples of its own recording)
+stim_times_30k = vertcat(stim_times_30k_groups{:}); %[trials x 1]
+stim_group = repelem((1:numel(stim_times_30k_groups))', cellfun(@numel,stim_times_30k_groups)); %recording (index into directory) of each trial [trials x 1]
 
 
 %% In case channel order from GUI is wrong, change it here
@@ -2108,8 +2258,10 @@ end
 %% SPIKING: save variables
 disp('MUA: Saving MUA results')
 
+runreport.ntrials_mua = size(stim_spike_stimchunks,1); %for the post-run report
+runreport.ntrials_kept = numel(tr_keep); %after any trial removal
 fname = sprintf([animal '-' stim '-'  'spiking_results','.mat']);
-save([save_directory '\Spiking\' animal '\' fname], 'stim_spike_stimchunks', 'tr_remove','tr_keep','-v7.3');
+save([save_directory '\Spiking\' animal '\' fname], 'stim_spike_stimchunks', 'tr_remove','tr_keep','stim_times_30k','stim_group','-v7.3');
 
 
 %close all
@@ -2118,3 +2270,81 @@ disp('MUA: Done')
 end
 
 toc
+
+%% Post-run report: printed at the end of the run
+fs_ttl = 30000; %sampling rate of the stim onsets in stimcheck [Hz]
+runend = datetime('now');
+fprintf('\n===== Run report: %s =====\n', animal)
+fprintf('Started %s, finished %s (%.1f min)\n', char(runstart), char(runend), minutes(runend-runstart))
+fprintf('Results folder: %s\n', save_directory)
+%a result file counts as written by this run if it was modified after runstart
+f = dir(fullfile(save_directory,'ProbeInfo',[animal '-ProbeInfo.mat']));
+if ~isempty(f) && f.datenum >= datenum(runstart)
+    fprintf('ProbeInfo written: %s\n', fullfile('ProbeInfo',f.name))
+end
+fprintf('\n--- Condition %s (stim_num %d of %d labels in stim_Index) ---\n', runreport.stim, runreport.stim_num, numel(stim_Index))
+
+%trial counts over all groups ('not run' if that section was off)
+ntr = {runreport.ntrials_lfp, runreport.ntrials_mua, runreport.ntrials_kept};
+for n = 1:numel(ntr)
+    if isempty(ntr{n}), ntr{n} = 'not run'; else, ntr{n} = num2str(ntr{n}); end
+end
+fprintf('Trials (all groups): LFP %s, MUA %s, kept (tr_keep) %s\n', ntr{:})
+
+%one block per group (recording): stim detection of the LFP and MUA sections, trials of this condition
+secs = {'lfp','mua'};
+nsel = {runreport.nselected_lfp, runreport.nselected_mua};
+for g = 1:numel(runreport.recording)
+    fprintf('Group %d: %s\n', g, runreport.recording{g})
+    for s = 1:numel(secs)
+        if g <= numel(stimcheck) && isfield(stimcheck(g),secs{s}) && ~isempty(stimcheck(g).(secs{s}))
+            D = stimcheck(g).(secs{s});
+            glitchtxt = '';
+            if ~isempty(D.glitch_times)
+                glitchtxt = sprintf(' at %s s', mat2str(round(D.glitch_times'/fs_ttl,2)));
+            end
+            seltxt = '';
+            if g <= numel(nsel{s})
+                seltxt = sprintf(', %d of this condition', nsel{s}(g));
+            end
+            fprintf('  Stim detection %s: %d stimuli (all conditions)%s, pulse width %s samples, interval %s s, %d glitches ignored%s\n', ...
+                upper(secs{s}), numel(D.stim_times), seltxt, sprintf('%g-%g',min(D.pulse_width),max(D.pulse_width)), ...
+                sprintf('%.2f-%.2f',min(diff(D.stim_times))/fs_ttl,max(diff(D.stim_times))/fs_ttl), numel(D.glitch_times), glitchtxt)
+        else
+            fprintf('  Stim detection %s: not run\n', upper(secs{s}))
+        end
+    end
+    if g <= numel(stimcheck) && isfield(stimcheck(g),'lfp') && isfield(stimcheck(g),'mua') ...
+            && ~isempty(stimcheck(g).lfp) && ~isempty(stimcheck(g).mua)
+        if isequal(stimcheck(g).lfp.stim_times, stimcheck(g).mua.stim_times)
+            fprintf('  LFP and MUA stimuli identical: yes\n')
+        else
+            fprintf('  LFP and MUA stimuli identical: NO\n')
+        end
+    end
+end
+
+%result files of this condition (same names as in the save sections) written during this run
+expected = {fullfile('LFP',animal,[animal '-' runreport.stim '-LFP.mat']), ...
+    fullfile('CSD',animal,[animal '-' runreport.stim '-CSD_results.mat']), ...
+    fullfile('TF',animal,[animal '-' runreport.stim '_TF_results.mat']), ...
+    fullfile('Spiking',animal,[animal '-' runreport.stim '-spiking_results.mat'])};
+figkinds = {'lfp_results','CSD_results','TF_results','SpikeRaster_results','Spikemean_results'};
+for a = 1:numel(runreport.areas)
+    for k = 1:numel(figkinds)
+        expected{end+1} = fullfile('AnimalFigures',animal,[animal '-' runreport.stim '-' runreport.areas{a} '_Probe-' figkinds{k} '.fig']);
+    end
+end
+fprintf('Files written:\n')
+nwritten = 0;
+for e = 1:numel(expected)
+    f = dir(fullfile(save_directory,expected{e}));
+    if ~isempty(f) && f.datenum >= datenum(runstart)
+        fprintf('  %s\n', expected{e})
+        nwritten = nwritten + 1;
+    end
+end
+if nwritten == 0
+    fprintf('  none\n')
+end
+fprintf('===== end of run report =====\n')
