@@ -1,15 +1,24 @@
-% SummaryAnalysis_MultiMouseMUA_modifiedforallChannels.m
+% SummaryAnalysis_MultiMouseLFP_allChannels.m
 %
-% Description: Pools peri-stimulus MUA across mice and conditions using every
-%   usable channel on one probe per mouse. The user lists only the mice, the
-%   region per mouse, and the condition names, then picks files. The probe is
-%   the one whose ProbeInfo.Areas matches the mouse's region; its channels
-%   minus ProbeInfo.Ch_Remove are analyzed. Each file's mouse is found from
-%   its file name. Spikes are binned to 1 ms and smoothed into a firing rate
-%   (50 ms moving mean), then per-trial AUC and peak rate are computed for an
-%   early (P1) and late (P2) window after the stimulus. Results go into one
-%   long-format table (one row per trial x channel) and are written to a csv
-%   for R. No plotting (plot sections were removed; to be rebuilt).
+% Description: Pools peri-stimulus LFP across mice and conditions using every
+%   usable channel on one probe per mouse (same structure as
+%   SummaryAnalysis_MultiMouseMUA_modifiedforallChannels.m). The user lists only
+%   the mice, the region per mouse, the condition names and (optionally) trial
+%   labels, picks shank activity scores and then the files. The probe is the one
+%   whose ProbeInfo.Areas matches the mouse's region; its channels minus
+%   ProbeInfo.Ch_Remove are analyzed. Each file's mouse is found from its file
+%   name. For every good trial x channel, the measures set in the
+%   DATA-TYPE-SPECIFIC CALCULATION block are computed, then all rows go into one
+%   long-format table (with trial, channel, shank/depth and label columns) that
+%   is written to a csv for R.
+%   LFP measures (ported from SummaryAnalysis_MultiMouseLFP.m): area under the
+%   RMS envelope of the lfp_band (1-150 Hz) band, and the negative peak and its
+%   latency, in an early (P1) and late (P2) window after the stimulus. Each trial
+%   is filtered on its own with a zero-phase Butterworth bandpass (the old script's
+%   steep IIR bandpass distorted the signal - a 60 uV dip came out ~2x larger with
+%   ringing across the whole pre-stim period - so RMSsum is NOT comparable to CSVs
+%   from the old script). Peaks are found on a peak_smooth_ms moving mean of the
+%   unfiltered LFP, with no thresholding: every window with a local max gets a peak.
 %
 % Inputs:
 %   User-set config (edited at top of script):
@@ -20,16 +29,21 @@
 %     condis (cell array of char, 1 x nCond) - condition names; order becomes the factor order in R
 %     tr_conditional_use (cell array of strings, 1 x nLabels) - names of trial labels made with
 %       ConditionalTrialRemove.m to add as Excl_<name> columns; empty = none
+%     datadir (char) - folder the result files are picked from
+%     datavar (char) - name of the data variable in each result file
+%     lfp_band (double, 1 x 2) - bandpass for the RMS envelope, Hz ([1 150]); Butterworth,
+%       2nd order per edge, second-order sections, filtfilt (zero phase)
+%     rms_win_ms (double) - RMS envelope window for RMSsum (25)
+%     peak_smooth_ms (double) - moving mean used to find peaks (11)
 %   Files picked per condition via uipickfiles (superCondis_dir, cell 1 x nCond),
-%   from E:\Roy\Processed Silicon Probe Data\Spiking\<animal>\<animal>-<stim>-spiking_results.mat,
-%   each containing:
-%     stim_spike_stimchunks (0/1, trials x samples x channels) - peri-stimulus
-%       spike indicator at 30 kHz. Stim onset is 1 ms bin 5001 (stim_onset):
-%       OpenEphys_BaseAnalysis*.m epochs trials as stim_times-pre:stim_times+post
-%       with pre = 5 s, so stim_times sits at position pre+1. Channel index is assumed
-%       to equal the raw channel ID [inferred: data is built from
-%       data(ProbeInfo.ChanIds,:), so this holds when ChanIds = 1:Chans]
-%     tr_keep (double, 1 x nTrials) - trial numbers (indices into dim 1 of stim_spike_stimchunks)
+%   from <datadir>\<animal>\<animal>-<stim>-LFP.mat, each containing:
+%     stim_lfp_stimchunks (double, trials x samples x channels) - peri-stimulus LFP,
+%       1 kHz, presumably in uV [inferred: units not stated upstream]. Stim onset is
+%       sample 5001 (stim_onset): OpenEphys_BaseAnalysis*.m epochs trials as
+%       stim_times-pre:stim_times+post with pre = 5000 samples, and stim_times is the
+%       first high TTL sample. Channel index is assumed to equal the raw channel ID
+%       [inferred: holds when ProbeInfo.ChanIds = 1:Chans]
+%     tr_keep (double, 1 x nTrials) - trial numbers (indices into dim 1 of the data)
 %     tr_remove (0/1, 1 x nTrials) - mask over tr_keep (updated format, as written by
 %       ConditionalTrialRemove_callable.m); only tr_keep(~tr_remove) are analyzed.
 %       Must be the same length as tr_keep, else the script stops with an error
@@ -40,44 +54,53 @@
 %     ProbeInfo.Areas (cell, 1 x nProbes) - region name per probe
 %     ProbeInfo.ProbeMaps (cell, 1 x nProbes) - 2D map of raw channel IDs per probe (0 = no site);
 %       column s = shank s, row 1 = top of the shank
-%     ProbeInfo.ShankLabels (cell, 1 x nProbes, optional) - per probe a struct (or [] if not labelled);
-%       each field holding one number per shank (1 x nShanks, ProbeMaps column order, raw values)
-%       is offered as a shank activity score (e.g. SponActivity, LightOnly_mixedIntensity)
 %     ProbeInfo.Ch_Remove (cell, 1 x nProbes) - raw channel IDs to exclude per probe;
 %       missing/empty = exclude none. Assumed indexed by probe number
 %       [inferred: OpenEphys_BaseAnalysis*.m indexes it by position in poi, which is
 %       the same only when poi = 1:ProbeNum (the default)]
+%     ProbeInfo.ShankLabels (cell, 1 x nProbes, optional) - per probe a struct (or [] if not labelled);
+%       each field holding one number per shank (1 x nShanks, ProbeMaps column order, raw values)
+%       is offered as a shank activity score (e.g. SponActivity, LightOnly_mixedIntensity)
 %
 % Derived (not user-set):
+%   shankscore_use (string, 1 x nScores) - shank activity scores chosen in a list dialog at the
+%     start (from those found across the mice); if some mice lack one, a dialog offers
+%     abort or continue (those mice get NaN in that column)
 %   condiFileMice (cell, 1 x nCond) - per file, index into mice (from the file name)
 %   condiFileNum (cell, 1 x nCond) - per file, Nth file of that mouse in that condition (1..n)
 %   mouseProbe (double, 1 x nMice) - probe index used for each mouse
 %   chanlist (cell, 1 x nMice) - sorted column vector of raw channel IDs analyzed per mouse
-%   shankscore_use (string, 1 x nScores) - shank activity scores chosen in a list dialog at the
-%     start (from those found across the mice); if some mice lack one, a dialog offers
-%     abort or continue (those mice get NaN in that column)
+%   stim_onset, P1wind, P2wind, Allwind (double) - stimulus sample (5001) and the response
+%     windows as samples: 75-350, 350-3000 and 75-3000 ms post stimulus
+%   metriccols (struct) - one field per measure (column name), each a column over all rows
+%   lfp_sos, lfp_g (double) - the lfp_band Butterworth filter as second-order sections and gain
 %
 % Outputs:
-%   tableres (table, nRows x (17 + nLabels + nScores)) - one row per trial x channel. Measure columns
-%   carry "MUA" so tables from the LFP/MUA/TF scripts can be combined. Columns:
-%     P1_MUAAUC, P2_MUAAUC, All_MUAAUC (double) - integral of the rate over P1 (75-350 ms post
-%       stimulus), P2 (350-3000 ms) and both (75-3000 ms), in spikes/s*ms
-%       (P1wind / P2wind / Allwind = stim_onset + those ms)
-%     P1_MUAPeak, P2_MUAPeak (double) - rate at the highest local maximum in the P1 / P2
-%       window (lower on both sides, window padded 1 bin each side; a flat top counts
-%       once, at its center), in spikes/s. 0 if the rate is 0 throughout the window;
-%       NaN if there are spikes but no local max (rate only decaying/rising).
-%       Uses islocalmax (MATLAB R2017b+)
-%     P1_MUAPeakTime, P2_MUAPeakTime (double) - time of that peak, in ms post stimulus
-%       (bin - stim_onset); NaN whenever there is no peak (Peak 0 or NaN)
+%   tableres (table, nRows x (nMeasures + 11 + nLabels + nScores)) - one row per good
+%   trial x kept channel, ordered condition -> file -> channel -> trial. Columns:
+%     (measure columns, set in the calculation block; names carry "LFP" so LFP/MUA/TF
+%     tables can be combined:)
+%     P1_LFPRMSsum, P2_LFPRMSsum (double) - area under the rms_win_ms RMS envelope of the
+%       lfp_band-filtered LFP over P1 (75-350 ms post stimulus) / P2 (350-3000 ms), in uV*ms.
+%       The filter smears ~0.3 s, so a strong P1 response adds ~12% of its own RMSsum to P2
+%     All_LFPRMSsum (double) - the same area over All (75-3000 ms), in uV*ms; equals
+%       P1_LFPRMSsum + P2_LFPRMSsum (trapezoid integrals; the windows share the 350 ms sample).
+%       Column placed after P2_LFPPeakTime
+%     P1_LFPPeak, P2_LFPPeak (double) - size of the negative peak in the P1 / P2 window, as a
+%       positive value in uV, measured on a peak_smooth_ms moving mean of the unfiltered LFP:
+%       the highest local maximum of the sign-flipped trace (lower on both sides, window padded
+%       1 sample each side so a deflection still decaying into / rising out of the window isn't
+%       a peak; a flat top counts once, at its center). No threshold: noise-only trials also get
+%       a (small) peak. NaN only if the window has no local max
+%     P1_LFPPeakTime, P2_LFPPeakTime (double) - time of that peak, in ms post stimulus
+%       (sample - stim_onset); NaN when Peak is NaN
 %     Animal_Name (string), Animal_Num (double) - mouse ID and its index in mice
 %     Condition_Name (string), Condition_Num (double) - condition name and its index in condis
 %     Condition_FileNum (double) - Nth file of this mouse within this condition (1..n)
 %     Trial (double) - original trial number (value from tr_keep); with Animal/Condition/
 %       FileNum/Channel_ID, identifies a row across the LFP/MUA/TF tables
 %     Region (string) - from region
-%     Channel_ID (double) - raw channel ID (unique across probes; map to probe
-%       location / ProbeInfo labels downstream)
+%     Channel_ID (double) - raw channel ID (unique across probes)
 %     Excl_<name> (double, one per tr_conditional_use name) - 1 = trial flagged under that
 %       label, 0 = file evaluated and trial not flagged, NaN = file never evaluated for it
 %     (added in their own section after the table is built, so they can be redone alone:)
@@ -91,13 +114,15 @@
 %     (file name chosen by the user in a dialog. NOTE: the existing-name check
 %     omits '.csv', so an existing csv with the same name IS overwritten)
 %
-% Dependencies: OpenEphys_BaseAnalysis*.m (writes *-spiking_results.mat and
-%   <animal>-ProbeInfo.mat); OpenEphys_editProbeInfo_ChRemove.m (sets Ch_Remove);
+% Dependencies: OpenEphys_BaseAnalysis*.m (writes *-LFP.mat and <animal>-ProbeInfo.mat);
+%   OpenEphys_editProbeInfo_ChRemove.m (sets Ch_Remove);
 %   ConditionalTrialRemove.m / ConditionalTrialRemove_callable.m (tr_remove mask format,
-%   tr_remove_conditional labels). Requires uipickfiles (File Exchange).
+%   tr_remove_conditional labels); ProbeInfo.ShankLabels from the channel/shank labelling
+%   scripts. Requires uipickfiles (File Exchange), the Signal Processing Toolbox (butter,
+%   zp2sos, filtfilt, envelope) and MATLAB R2017b+ (islocalmax).
 
 %list mice to be analyzed. Note the order as it will be treated as a factor (R style)
-%names must match the start of the data file names (animal-stim-spiking_results.mat)
+%names must match the start of the data file names (animal-stim-LFP.mat)
 mice = {"20260226-p12"};%, "20260402-p12"};
 
 %which brain area is being recorded for each mouse? (same order as mice)
@@ -110,6 +135,13 @@ condis = {'L_4','LW_4', 'L_8','LW_8','L_12','LW_12','L_15','LW_15'}; %list condi
 %trial labels made with ConditionalTrialRemove.m to add as columns (empty = none)
 %each becomes a column Excl_<name>: 1 = flagged, 0 = evaluated & not flagged, NaN = file not evaluated
 tr_conditional_use = {}; %e.g. {"whisker_twitch_artifact"}
+
+%data type (the only place it is named)
+datadir = 'E:\Roy\Processed Silicon Probe Data\LFP'; %where the result files are picked from
+datavar = 'stim_lfp_stimchunks';                      %data variable in each file: trials x samples x channels
+lfp_band = [1 150];   %Hz, bandpass for the RMS envelope
+rms_win_ms = 25;      %RMS envelope window for RMSsum
+peak_smooth_ms = 11;  %moving mean used to find peaks
 
 assert(numel(region) == numel(mice), ...
     'region has %d entries but mice has %d (need one region per mouse)', numel(region), numel(mice))
@@ -169,9 +201,9 @@ if ~isempty(missingmsg)
         error('Aborted by user: selected shank scores are missing for some mice')
     end
 end
-%%
+%% pick the files for each condition
 for con = 1:length(condis)
-    superCondis_dir{con} = uipickfiles('FilterSpec','E:\Roy\Processed Silicon Probe Data\Spiking','Prompt', ['Choose ' condis{con} ' files']);
+    superCondis_dir{con} = uipickfiles('FilterSpec',datadir,'Prompt', ['Choose ' condis{con} ' files']);
 end
 %% match files to mice, and get channels for each mouse from ProbeInfo
 
@@ -213,12 +245,8 @@ for m = 1:numel(mice)
         ' channels kept, removed: ' mat2str(intersect(probechans(:), chremove(:))')])
 end
 clear pinfo
-%%
-%load the data you will be using (and only that data), one file at a time
-superCondis = [];
-superCondis_rate = [];
-%superCondis_avg = [];
-%superCondis_std = [];
+%% load each file and compute the measures, one file at a time
+metriccols = struct(); %one field per measure (column name), filled by the calculation block
 
 triallabel_condiname = []; %metadata for later
 triallabel_condinum = [];
@@ -234,22 +262,17 @@ triallabel_trcond = zeros(0,numel(tr_conditional_use)); %one column per tr_condi
 trcond_nflagged = zeros(1,numel(tr_conditional_use));
 trcond_noteval = repmat({strings(0,1)},1,numel(tr_conditional_use));
 
-fs = 30000;
-stim_onset = 5001; %1 ms bin of stimulus onset (0 ms post stimulus); epochs are stim_times-pre:stim_times+post
+stim_onset = 5001; %sample (1 ms) of stimulus onset (0 ms post stimulus); epochs are stim_times-pre:stim_times+post
 P1wind = stim_onset + (75:350);   %ms post stimulus 75-350
 P2wind = stim_onset + (350:3000); %350-3000
 Allwind = stim_onset + (75:3000); %75-3000
 
+%bandpass for the RMS envelope: Butterworth, 2nd order per edge, as second-order sections (stable at
+%low cutoffs), applied forward and backward with filtfilt (zero phase). LFP is 1 kHz
+[z,p,k] = butter(2, lfp_band/(1000/2), 'bandpass');
+[lfp_sos,lfp_g] = zp2sos(z,p,k);
+
 for con = 1:numel(condis)
-
-    p1auc_con = [];
-    p2auc_con = [];
-    allauc_con = [];
-    p1peak_con = [];
-    p2peak_con = [];
-    p1peaktime_con = [];
-    p2peaktime_con = [];
-
     for file = 1:numel(superCondis_dir{con})
         disp(['Running Condition ', num2str(con), ' (', condis{con}, '), File ', num2str(file)])
         m = condiFileMice{con}(file);
@@ -301,80 +324,78 @@ for con = 1:numel(condis)
         %and kept channels once, then pick the ones needed from it in memory
         tr_rng = min(trs):max(trs);
         ch_rng = min(chs):max(chs);
-        superCondis_filetrials = dat.stim_spike_stimchunks(tr_rng,:,ch_rng);
-        superCondis_filetrials = superCondis_filetrials(trs - tr_rng(1) + 1,:,chs - ch_rng(1) + 1);
-        nbatch = floor(size(superCondis_filetrials,2)/(fs/1000));
+        filedata = dat.(datavar)(tr_rng,:,ch_rng);
+        filedata = filedata(trs - tr_rng(1) + 1,:,chs - ch_rng(1) + 1);
 
-        spikes_rate = zeros(ntr,nbatch,nch);
-        %spikes_rateavg = [];
-        %spikes_ratestd = [];
         for ch = 1:nch
+            chdata = reshape(filedata(:,:,ch),ntr,[]); %trials x samples for this channel
+            chmetrics = struct(); %one field per measure, each ntr x 1 (one value per trial)
 
-            chspikes = reshape(superCondis_filetrials(:,:,ch),ntr,[]);
-            spikeper = zeros(ntr,nbatch);
+            % ============ DATA-TYPE-SPECIFIC CALCULATION ============
+            %compute the measures from chdata (good trials x samples, this channel) and set
+            %chmetrics.<ColumnName> = ntr x 1 column for each, e.g. chmetrics.P1_LFPRMSsum
+            %(windows: P1wind / P2wind / Allwind; latency in ms = sample - stim_onset)
 
-            for batch = 1:nbatch
+            %RMS envelope of the lfp_band band; each trial filtered on its own, zero phase (columns of chdata')
+            chenv = envelope(filtfilt(lfp_sos,lfp_g,chdata'),rms_win_ms,'rms')';
+            %sign-flipped moving mean used to find negative peaks (negative deflections become maxima)
+            chsm = -movmean(chdata,peak_smooth_ms,2);
 
-                spikebatchi = sum(chspikes(:,1+((fs/1000)*(batch-1)):(fs/1000)+((fs/1000)*(batch-1))),2)>0;
-                spikeper(:,batch) = spikebatchi;
+            %For each window: RMSsum (area under the envelope), and the negative peak = highest local
+            %max of chsm in the window (lower on both sides; window padded 1 sample each side so a
+            %deflection still decaying into / rising out of it isn't a peak). Peak size is from the
+            %smoothed trace, as a positive value; NaN (with its time) if the window has no local max.
 
+            %P1
+            auc = cumtrapz(chenv(:,P1wind),2);
+            chmetrics.P1_LFPRMSsum = auc(:,end);
+            seg = chsm(:,P1wind(1)-1:P1wind(end)+1);
+            lm = islocalmax(seg,2,'FlatSelection','center');
+            lm(:,[1 end]) = false;
+            seg(~lm) = -Inf;
+            [peaks,tps] = max(seg,[],2);
+            peaktime = tps + P1wind(1) - 2 - stim_onset; %padded index -> sample -> ms post stimulus
+            nopeak = isinf(peaks);
+            peaks(nopeak) = NaN;  peaktime(nopeak) = NaN;
+            chmetrics.P1_LFPPeak = peaks;
+            chmetrics.P1_LFPPeakTime = peaktime;
+
+            %P2
+            auc = cumtrapz(chenv(:,P2wind),2);
+            chmetrics.P2_LFPRMSsum = auc(:,end);
+            seg = chsm(:,P2wind(1)-1:P2wind(end)+1);
+            lm = islocalmax(seg,2,'FlatSelection','center');
+            lm(:,[1 end]) = false;
+            seg(~lm) = -Inf;
+            [peaks,tps] = max(seg,[],2);
+            peaktime = tps + P2wind(1) - 2 - stim_onset; %padded index -> sample -> ms post stimulus
+            nopeak = isinf(peaks);
+            peaks(nopeak) = NaN;  peaktime(nopeak) = NaN;
+            chmetrics.P2_LFPPeak = peaks;
+            chmetrics.P2_LFPPeakTime = peaktime;
+
+            %All (75-3000 ms): RMSsum over the whole response (= P1_LFPRMSsum + P2_LFPRMSsum, the windows share the 350 ms sample)
+            auc = cumtrapz(chenv(:,Allwind),2);
+            chmetrics.All_LFPRMSsum = auc(:,end);
+            % =========================================================
+
+            %append this channel's measures to metriccols (any column names; same set every channel)
+            fns = fieldnames(chmetrics);
+            if ~isempty(fieldnames(metriccols))
+                assert(isempty(setxor(fns, fieldnames(metriccols))), ...
+                    '%s: the calculation block must set the same measures for every channel', fname)
             end
-
-            spikes_rate(:,:,ch) = movmean(spikeper,50,2)*1000;
-            %spikes_rateavg(ch,:) = mean(squeeze(spikes_rate(:,:,ch)),1);
-            %spikes_ratestd(ch,:) = std(squeeze(spikes_rate(:,:,ch)),1);
-
-
-            auc = cumtrapz(spikes_rate(:,P1wind,ch),2);
-            p1auc_con = cat(1,p1auc_con,auc(:,end));
-            auc = cumtrapz(spikes_rate(:,P2wind,ch),2);
-            p2auc_con = cat(1,p2auc_con,auc(:,end));
-            auc = cumtrapz(spikes_rate(:,Allwind,ch),2);
-            allauc_con = cat(1,allauc_con,auc(:,end));
-
-            %Peaks: highest local max in the window (lower on both sides), and its time in ms post stimulus.
-            %window is padded 1 bin each side so a decay into / rise out of the window isn't a peak.
-            %rounded so movmean plateaus are exactly flat, and a plateau's peak is its center.
-            %no local max (only decay/rise) -> Peak and PeakTime NaN; no spikes (rate all 0) -> Peak 0, PeakTime NaN
-            seg = round(spikes_rate(:,P1wind(1)-1:P1wind(end)+1,ch),6);
-            lm = islocalmax(seg,2,'FlatSelection','center');
-            lm(:,[1 end]) = false;
-            seg(~lm) = -Inf;
-            [peaks,tps] = max(seg,[],2);
-            peaktime = tps + P1wind(1) - 2 - stim_onset; %padded index -> bin -> ms post stimulus
-            nopeak = isinf(peaks);
-            allzero = all(spikes_rate(:,P1wind,ch) == 0,2);
-            peaks(nopeak) = NaN;  peaks(allzero) = 0;
-            peaktime(nopeak | allzero) = NaN;
-            p1peak_con = cat(1,p1peak_con,peaks);
-            p1peaktime_con = cat(1,p1peaktime_con,peaktime);
-
-            seg = round(spikes_rate(:,P2wind(1)-1:P2wind(end)+1,ch),6);
-            lm = islocalmax(seg,2,'FlatSelection','center');
-            lm(:,[1 end]) = false;
-            seg(~lm) = -Inf;
-            [peaks,tps] = max(seg,[],2);
-            peaktime = tps + P2wind(1) - 2 - stim_onset; %padded index -> bin -> ms post stimulus
-            nopeak = isinf(peaks);
-            allzero = all(spikes_rate(:,P2wind,ch) == 0,2);
-            peaks(nopeak) = NaN;  peaks(allzero) = 0;
-            peaktime(nopeak | allzero) = NaN;
-            p2peak_con = cat(1,p2peak_con,peaks);
-            p2peaktime_con = cat(1,p2peaktime_con,peaktime);
-
+            for f = 1:numel(fns)
+                assert(isequal(size(chmetrics.(fns{f})),[ntr 1]), ...
+                    '%s: measure %s must be ntr x 1 (one value per trial)', fname, fns{f})
+                if ~isfield(metriccols,fns{f})
+                    metriccols.(fns{f}) = [];
+                end
+                metriccols.(fns{f}) = [metriccols.(fns{f}); chmetrics.(fns{f})];
+            end
         end
-        clear superCondis_filetrials
+        clear filedata chdata chenv chsm
     end
-    %superCondis_avg(con,:,:) = spikes_rateavg;
-    %superCondis_std(con,:,:) = spikes_ratestd;
-
-    p1auc{con}  = p1auc_con;
-    p2auc{con}  = p2auc_con;
-    allauc{con} = allauc_con;
-    p1peak{con} = p1peak_con;
-    p2peak{con} = p2peak_con;
-    p1peaktime{con} = p1peaktime_con;
-    p2peaktime{con} = p2peaktime_con;
 end
 
 %summary of trial labels used
@@ -386,77 +407,20 @@ for k = 1:numel(tr_conditional_use)
             tr_conditional_use{k}, strjoin(trcond_noteval{k}, ', '))
     end
 end
-
-
-
-
-
-
-
-%% calculate summary data (peak and AUC)
-
-
-%calculate auc and peak for p1 and p2 of response
-
-%for con = 1:numel(condis)
-%    p1auc_con = [];
-%    p2auc_con = [];
-%    allauc_con = [];
-%    p1peak_con = [];
-%    p2peak_con = [];
-
-%    for ch = 1:size(chans,1)
-
-        %AUC
-%        auc = cumtrapz(superCondis_rate{con}(:,5150:5350,ch),2);
-%        p1auc_con = cat(1,p1auc_con,auc(:,end));
-%        auc = cumtrapz(superCondis_rate{con}(:,5350:8000,ch),2);
-%        p2auc_con = cat(1,p2auc_con,auc(:,end));
-%        auc = cumtrapz(superCondis_rate{con}(:,5020:8000,ch),2);
-%        allauc_con = cat(1,allauc_con,auc(:,end));
-
-        %Peaks
-%        peaks = max(superCondis_rate{con}(:,5150:5350,ch),[],2);
-%        p1peak_con = cat(1,p1peak_con,peaks(:,end));
-%        peaks = max(superCondis_rate{con}(:,5350:8000,ch),[],2);
-%        p2peak_con = cat(1,p2peak_con,peaks(:,end));
-        %peaks = max(superCondis_rate{con}(:,5020:8000),[],2);
-        %allpeak{con} = peaks;
-
-%    end
-
-%    p1auc{con}  = p1auc_con;
-%    p2auc{con}  = p2auc_con;
-%    allauc{con} = allauc_con;
-%    p1peak{con} = p1peak_con;
-%    p2peak{con} = p2peak_con;
-%end
 %% make a table that can be easily read out in R for stats and plotting
-trialdata_p1auc = [];
-trialdata_p2auc = [];
-trialdata_allauc = [];
-trialdata_p1peak = [];
-trialdata_p2peak = [];
-trialdata_p1peaktime = [];
-trialdata_p2peaktime = [];
-
-for con = 1:numel(condis)
-   trialdata_p1auc = vertcat(trialdata_p1auc,p1auc{con});
-   trialdata_p2auc = vertcat(trialdata_p2auc,p2auc{con});
-   trialdata_allauc = vertcat(trialdata_allauc,allauc{con});
-   trialdata_p1peak = vertcat(trialdata_p1peak,p1peak{con});
-   trialdata_p2peak = vertcat(trialdata_p2peak,p2peak{con});
-   trialdata_p1peaktime = vertcat(trialdata_p1peaktime,p1peaktime{con});
-   trialdata_p2peaktime = vertcat(trialdata_p2peaktime,p2peaktime{con});
-end
-
-
-tableres = table(trialdata_p1auc,trialdata_p2auc,trialdata_allauc,trialdata_p1peak,trialdata_p2peak,...
-      trialdata_p1peaktime,trialdata_p2peaktime,...
-      triallabel_animalname, triallabel_animalnum, triallabel_condiname,triallabel_condinum,triallabel_condifile,...
+labeltab = table(triallabel_animalname, triallabel_animalnum, triallabel_condiname,triallabel_condinum,triallabel_condifile,...
     triallabel_trialnum,triallabel_region,triallabel_chanID,...
-    'VariableNames', ["P1_MUAAUC","P2_MUAAUC","All_MUAAUC","P1_MUAPeak","P2_MUAPeak","P1_MUAPeakTime","P2_MUAPeakTime",...
-    "Animal_Name","Animal_Num","Condition_Name","Condition_Num","Condition_FileNum","Trial","Region","Channel_ID"]);
+    'VariableNames', ["Animal_Name","Animal_Num","Condition_Name","Condition_Num","Condition_FileNum","Trial","Region","Channel_ID"]);
+
+%measure columns first (from metriccols), then the label columns
+tableres = labeltab(:,[]);
+fns = fieldnames(metriccols);
+for f = 1:numel(fns)
+    assert(numel(metriccols.(fns{f})) == height(labeltab), ...
+        'Measure %s has %d rows but there are %d label rows', fns{f}, numel(metriccols.(fns{f})), height(labeltab))
+    tableres.(fns{f}) = metriccols.(fns{f});
+end
+tableres = [tableres, labeltab];
 
 %trial label columns, one per tr_conditional_use name
 for k = 1:numel(tr_conditional_use)
@@ -552,6 +516,3 @@ end
 
 writetable(tableres,fullfile(['E:\Roy\Processed Silicon Probe Data\BundledAnimalData\csvfiles_forR\' cell2mat(filename) '.csv']))
 disp('Saved. Go to R, traitor.')
-
-
-%save(fullfile(['E:\Roy\Processed Silicon Probe Data\BundledAnimalData\20260226-p12_wholeprobe_means']), 'superCondis_avg', 'superCondis_std','superCondis_dir')
