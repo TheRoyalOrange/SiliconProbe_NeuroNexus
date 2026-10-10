@@ -51,8 +51,8 @@
 
 %now write the channels you don't like. Use Chan_Ids from ProbeInfo.Chan_Ids
 badchans = {
-            [1, 2, 3, 9, 10, 11, 12 17, 18, 19, 20, 25, 26, 27, 28, 33, 34, 35, 36, 41, 42, 43, 44, 49, 50, 51, 52, 57, 58, 59, 60]' %channels from first probe
-            [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 81, 89, 97]'    %channels from second probe
+            [1, 2, 3, 9, 10, 11, 12, 17, 18, 19, 20, 25, 26, 27, 33, 34, 35, 41, 42, 43, 49, 50, 51, 57, 58]' %channels from first probe
+            [65	66	67	68	69	70	71	72	73	74	75	76	77	81	82	83	84	85	89	90	91	93	95	96	99	105	106	108	113	114	115	116	121	122	123	124]'    %channels from second probe
                 }';
 
 
@@ -71,4 +71,4 @@ disp(ProbeInfo.Ch_Remove)
 %% save it
 
 save(fullfile(['E:\Roy\Processed Silicon Probe Data\ProbeInfo\' char(animal) '-ProbeInfo.mat']),"ProbeInfo")
-
+disp('saved')

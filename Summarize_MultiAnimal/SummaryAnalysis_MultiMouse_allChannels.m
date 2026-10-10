@@ -151,13 +151,14 @@
 %%
 %list mice to be analyzed. Note the order as it will be treated as a factor (R style)
 %names must match the start of the data file names (animal-stim-LFP.mat)
-mice = {"20260226-p12", "20260402-p12", "20260411-p9","20260423-p12"};%, };
+mice = {"20260508-p9", "20260509-p10", "20260821-p10"};%, };
 
 %which brain area is being recorded for each mouse? (same order as mice)
 %used to pick the probe: must match that mouse's ProbeInfo.Areas
-region = {"V1","V1","V1","V1"};
+region = {"V1","V1","V1"};
 
-condis = {'W','L_4','LW_4', 'L_8','LW_8','L_12','LW_12','L_15','LW_15'}; %list conditions to be included, named as you'd prefer. Note the order
+condis = {'W','L_8','LW_8','W_TTX','L_8_TTX','LW_8_TTX'}; %list conditions to be included, named as you'd prefer. Note the order
+%condis = {'W','L_4','LW_4', 'L_8','LW_8','L_12','LW_12','L_15','LW_15'}; %list conditions to be included, named as you'd prefer. Note the order
 % as they will be treated as factors later
 
 %trial labels made with ConditionalTrialRemove.m to add as columns (empty = none)
