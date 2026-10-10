@@ -65,13 +65,11 @@
 %                               trials match) and converted to the first kept
 %                               1kHz sample at or after each onset (0-0.97 ms
 %                               after the true onset)
-%                  tr_keep  -  vector of trials considered "good" according to
-%                              user. By default, this contains all trials and
-%                              is modified later from a different script
-%                              size[trials]
-%                  tr_remove - the complement to tr_keep. By default this is
-%                              left empty and modified later by a differen
-%                              script size[empty]
+%                  tr_keep  - full list of trial indices extracted by preprocessing. Never edited
+%                             after initialization. size[1 x trials]
+%                  tr_remove - trial-exclusion mask, position-aligned with tr_keep (1 = exclude
+%                              this trial). All zeros unless trials are removed interactively;
+%                              good trials are tr_keep(~tr_remove). size[1 x trials]
 %
 %    CSD_results.mat - mat file containing:
 %                        stim_CSD - cell array containing cell arrays with
@@ -79,13 +77,11 @@
 %                                   for each shank in each
 %                                   probe. size{1 x probe number}{number of
 %                                   shanks}[trial length x channels per shank]
-%                        tr_keep  - vector of trials considered "good" according to 
-%                                   user. By default, this contains all trials and
-%                                   is modified later from a different script
-%                                   size[trials]
-%                        tr_remove - the complement to tr_keep. By default this is
-%                                    left empty and modified later by a differen
-%                                    script size[empty]
+%                        tr_keep  - full list of trial indices extracted by preprocessing. Never edited
+%                                   after initialization. size[1 x trials]
+%                        tr_remove - trial-exclusion mask, position-aligned with tr_keep (1 = exclude
+%                                    this trial). All zeros unless trials are removed interactively;
+%                                    good trials are tr_keep(~tr_remove). size[1 x trials]
 %                        
 % 
 %    TF_results.mat - mat file containing:
@@ -93,13 +89,11 @@
 %                                 of morlet wavelet convolution on LFP data
 %                                 data. size[channels x frequencies x time
 %                                 x trials]
-%                       tr_keep  - vector of trials considered "good" according to 
-%                                  user. By default, this contains all trials and
-%                                  is modified later from a different script
-%                                  size[trials]
-%                       tr_remove - the complement to tr_keep. By default this is
-%                                   left empty and modified later by a differen
-%                                   script size[empty]
+%                       tr_keep  - full list of trial indices extracted by preprocessing. Never edited
+%                                  after initialization. size[1 x trials]
+%                       tr_remove - trial-exclusion mask, position-aligned with tr_keep (1 = exclude
+%                                   this trial). All zeros unless trials are removed interactively;
+%                                   good trials are tr_keep(~tr_remove). size[1 x trials]
 % 
 %   spiking_results.mat - mat file containing:
 %                           stim_spike_stimchunks - 3D array of MUA data,
@@ -113,13 +107,11 @@
 %                                            ceil((stim_times_30k-1)/30)+1 gives the
 %                                            LFP file's stim_times (single-piece recordings)
 %
-%                           tr_keep  - vector of trials considered "good" according to
-%                                      user. By default, this contains all trials and
-%                                      is modified later from a different script
-%                                      size[trials]
-%                           tr_remove - the complement to tr_keep. By default this is
-%                                       left empty and modified later by a differen
-%                                       script size[empty]
+%                           tr_keep  - full list of trial indices extracted by preprocessing. Never edited
+%                                      after initialization. size[1 x trials]
+%                           tr_remove - trial-exclusion mask, position-aligned with tr_keep (1 = exclude
+%                                       this trial). All zeros unless trials are removed interactively;
+%                                       good trials are tr_keep(~tr_remove). size[1 x trials]
 %
 %    Run report - printed in the command window once all recordings are done:
 %              animal, run start/end, and per recording the raw folder analyzed,
@@ -128,7 +120,7 @@
 %              run (expected file names modified after runstart).
 %    runreport (struct array, 1 x recordings, workspace only - not saved) - fields
 %              .stim, .recording (raw folder), .areas (ProbeInfo.Areas), .ntrials_lfp,
-%              .ntrials_mua, .ntrials_kept (numel(tr_keep) at saving); [] = not run
+%              .ntrials_mua, .ntrials_kept (sum(~tr_remove) at saving); [] = not run
 %    runstart (datetime) - start of the run
 %    stimcheck (struct array, 1 x recordings, workspace only - not saved) - stim
 %              detection info for a post-run report. Fields:
@@ -656,8 +648,9 @@ for i = 1:ProbeInfo.Chans
     stim_lfp_stimchunks(:,:,i) = geoenginned_ch; %with dimensions [trials x epoch length x channels]
 end
 
-tr_remove = []; %list of trials to remove (recommended not to change at this point)
-tr_keep = 1:length(stim_times); %list of trials to keep (should be disjoint from tr_remove). Initialize as all trials
+%tr_remove = []; %list of trials to remove (recommended not to change at this point) %replaced: tr_remove is now a 0/1 mask over tr_keep, set below
+tr_keep = 1:length(stim_times); %full list of trial indices. Never edited after this point - removed trials are marked in tr_remove
+tr_remove = zeros(1,length(tr_keep)); %trial-exclusion mask, position-aligned with tr_keep. 1 = exclude this trial
 runreport(recnum).ntrials_lfp = size(stim_lfp_stimchunks,1); %for the post-run report
 
 clear geoenginned_ch
@@ -973,11 +966,11 @@ fieldsize = [1 50];
 definput = {''};
 opts.Resize = 'on';
 opts.WindowStyle = 'normal'
-tr_remove = inputdlg(promt,dlgtitle,fieldsize,definput,opts);
-tr_remove = str2num(tr_remove{1});
+tr_remove_list = inputdlg(promt,dlgtitle,fieldsize,definput,opts);
+tr_remove_list = str2num(tr_remove_list{1}); %trial numbers typed by the user (tr_remove itself stays a 0/1 mask)
 
 stim_lfp_stimchunks_temp = stim_lfp_stimchunks;
-stim_lfp_stimchunks_temp(tr_remove,:,:) = [];
+stim_lfp_stimchunks_temp(tr_remove_list,:,:) = [];
 for i = 1:chans
     stim_lfp_avg_temp(i,:) = mean(stim_lfp_stimchunks_temp(:,:,i),1);
 end 
@@ -1013,10 +1006,11 @@ switch answer
     case btn1
         ishsokayrly = 1;
         startover = 0;
-        tr_keep(tr_remove) = [];
+        %tr_keep(tr_remove) = []; %replaced: tr_keep stays the full trial list, removed trials are marked in the tr_remove mask
+        tr_remove(tr_remove_list) = 1;
         stim_lfp_avg = [];
         for i = 1:chans
-        stim_lfp_avg(i,:) = mean(stim_lfp_stimchunks(tr_keep,:,i),1);
+        stim_lfp_avg(i,:) = mean(stim_lfp_stimchunks(tr_keep(~tr_remove),:,i),1);
         end 
         clear stim_lfp_stimchunks_temp
 
@@ -1149,7 +1143,7 @@ end
 if LFP == 1
  disp('LFP: Saving LFP results')
 
-    runreport(recnum).ntrials_kept = numel(tr_keep); %after any trial removal (for the post-run report)
+    runreport(recnum).ntrials_kept = sum(~tr_remove); %after any trial removal (for the post-run report)
     fname = sprintf([animal '-' stim '-' 'LFP']);
     save([save_directory '\LFP\' animal '\'  fname], 'stim_lfp_stimchunks', 'stim_times', 'tr_remove', 'tr_keep');     
     
@@ -1651,7 +1645,7 @@ for ch = 1:size(stim_tfpower,1)
     stim_tfpower_dB(:,:,i) = downsample(downsample(10*log10(bsxfun(@rdivide, squeeze(stim_tfpower(ch,:,:,i)), squeeze(baseline))),2)',2)';
     
     end
-    stim_tfpower_dB_avg(ch,:,:) = squeeze(mean(stim_tfpower_dB(:,:,tr_keep),3));
+    stim_tfpower_dB_avg(ch,:,:) = squeeze(mean(stim_tfpower_dB(:,:,tr_keep(~tr_remove)),3));
 end
 
 if artistemode == 1
@@ -2047,7 +2041,7 @@ spikes_ms = [];
 for ch = 1:size(stim_spike_stimchunks,3)
     
     
-    chspikes = squeeze(stim_spike_stimchunks(tr_keep,:,ch));
+    chspikes = squeeze(stim_spike_stimchunks(tr_keep(~tr_remove),:,ch));
     
         for batch = 1:size(stim_spike_stimchunks,2)/(fs/1000)
             
@@ -2068,13 +2062,13 @@ end
 %% make raster stuff
 clear trials spikeTimes
 for ch = 1:size(stim_spike_stimchunks,3)
-    isaspike = find(stim_spike_stimchunks(tr_keep,:,ch)');
-    trialnums = repmat(1:size(tr_keep,2),size(stim_spike_stimchunks,2),1);
+    isaspike = find(stim_spike_stimchunks(tr_keep(~tr_remove),:,ch)');
+    trialnums = repmat(1:sum(~tr_remove),size(stim_spike_stimchunks,2),1);
     trials{ch} = trialnums(isaspike)';
     
     spikeTimes{ch} = (seconds(isaspike)/fs);
 end
-trialStarts = (repmat(1:size(tr_keep,2),1)*size(stim_spike_stimchunks,2))-(post+1);
+trialStarts = (repmat(1:sum(~tr_remove),1)*size(stim_spike_stimchunks,2))-(post+1);
 
 %make a plot of it all
 
@@ -2237,7 +2231,7 @@ disp('MUA: Saving MUA results')
 
 fname = sprintf([animal '-' stim '-'  'spiking_results','.mat']);
 runreport(recnum).ntrials_mua = size(stim_spike_stimchunks,1); %for the post-run report
-runreport(recnum).ntrials_kept = numel(tr_keep); %after any trial removal
+runreport(recnum).ntrials_kept = sum(~tr_remove); %after any trial removal
 stim_times_30k = stim_times; %stimulus onsets [30kHz samples], so spiking trials can be checked against the LFP file
 save([save_directory '\Spiking\' animal '\' fname], 'stim_spike_stimchunks', 'tr_remove','tr_keep','stim_times_30k','-v7.3');
 
