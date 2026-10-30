@@ -57,6 +57,7 @@ rather than leaving it stale.
 
 ## Working conventions
 
+- Always load the `matlab-style` skill before writing or editing MATLAB code.
 - Preserve existing variable/struct field naming across scripts unless
   explicitly asked to refactor — downstream scripts depend on exact field
   names.
