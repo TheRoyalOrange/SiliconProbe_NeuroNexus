@@ -96,7 +96,7 @@
 %     stim_lfp_stimchunks), so the caller doesn't need to know the
 %     channel count in advance. Before prompting, opens the saved LFP
 %     overview figure(s) for this animal/condition (one per probe/
-%     region, from <save_directory>\AnimalFigures\<animal>\
+%     region, from <save_directory>\Figures_BaseAnalysis\<animal>\
 %     <full_filename>-<ProbeInfo.Areas{prb}>_Probe-lfp_results.fig) so
 %     the user can reference channel layout when choosing. Once chosen,
 %     stim_spike_stimchunks is read for this channel only, via a
@@ -149,7 +149,7 @@
 %   exist. Also expects ProbeInfo.Areas (cell array of probe/region
 %   names) to be populated, and (non-fatal if missing - a warning is
 %   issued instead) the per-probe lfp_results.fig files under
-%   AnimalFigures to have been saved for this animal/condition.
+%   Figures_BaseAnalysis to have been saved for this animal/condition.
 
 function ProbeInfo = ConditionalTrialRemove_callable(animal, condition, tr_conditional, fs, ProbeInfo, save_directory, master_filename)
 
@@ -229,7 +229,7 @@ tr_keep_local = tr_keep(~logical(tr_remove)); %only offer trials not already per
 
 %% open the saved LFP overview figure(s) for this animal/condition (one per probe/region), for channel reference
 for prb = 1:numel(ProbeInfo.Areas)
-    lfpFigFile = fullfile([save_directory '\AnimalFigures\' animal '\' full_filename '-' ProbeInfo.Areas{prb} '_Probe-lfp_results.fig']);
+    lfpFigFile = fullfile([save_directory '\Figures_BaseAnalysis\' animal '\' full_filename '-' ProbeInfo.Areas{prb} '_Probe-lfp_results.fig']);
     if isfile(lfpFigFile)
         openfig(lfpFigFile);
     else

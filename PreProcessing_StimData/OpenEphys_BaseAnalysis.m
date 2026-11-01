@@ -105,7 +105,7 @@
 % 
 %    
 %    [Note: all output figures also have brain area added to prefix
-%    animal-stim-area(i)]
+%    animal-stim-area(i). All figures save to save_directory\Figures_BaseAnalysis\<animal>]
 %    
 %    Probe-lfp_results - figure of mean LFP for each channel, plotted in
 %                        shape of probe (ex. 8x8 probe has an 8x8
@@ -318,8 +318,8 @@ if isfolder([save_directory '\ProbeInfo']) == false
 end
 
 %create figures folder for animal
-if isfolder([save_directory '\AnimalFigures\' animal]) == false
-    mkdir([save_directory '\AnimalFigures\' animal])  
+if isfolder([save_directory '\Figures_BaseAnalysis\' animal]) == false
+    mkdir([save_directory '\Figures_BaseAnalysis\' animal])  
 end
 %% get directory (user input)
 %%%recording info%%%
@@ -939,7 +939,7 @@ if artistemode == 1
         
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'lfp_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     
     end
@@ -968,7 +968,7 @@ else
         
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'lfp_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     
     end
@@ -1196,7 +1196,7 @@ end
 
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'CSD_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     
 end
@@ -1253,7 +1253,7 @@ sgtitle([animal ' ' ProbeInfo.Areas{prb} '-Probe ' stim ' CSD'])
 
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'CSD_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     
 end
@@ -1613,7 +1613,7 @@ for chan = 1:numel(poilayoutT{prb})
 end
  if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'TF_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
  end
 end
 
@@ -1649,7 +1649,7 @@ for chan = 1:numel(poilayoutT{prb})
 end
  if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'TF_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
  end
 end
 end
@@ -1933,7 +1933,7 @@ disp('MUA: Making pictures for you')
     
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'SpikeRaster_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     end
 
@@ -1957,7 +1957,7 @@ disp('MUA: Making pictures for you')
         
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'SpikeRaster_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
 
     end
@@ -2012,7 +2012,7 @@ if showme == 1
         end
          if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'Spikemean_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
          end
     end
    else
@@ -2034,7 +2034,7 @@ if showme == 1
         end
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'Spikemean_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
    
     end
