@@ -13,6 +13,10 @@
 %
 % Inputs:
 %   data (OpenEphys recording, .Rhythm Data format, loaded via uipickfiles)
+%     - raw .samples are assumed to be int16 counts (x0.1950 = uV); this
+%       is inferred from the conversion code, not documented by the loader.
+%       In the MUA section data is kept as int16 [channels x timepoints]
+%       and converted to uV only where it's used, to save memory.
 %     - a recording is a consecutive series of trials for a given
 %       condition. Starting/stopping a recording without changing the
 %       file name or condition creates subfolders within it.
@@ -49,6 +53,9 @@
 %               stim_lfp_stimchunks - 3D array of lfp data split into
 %                                     trials. Data is downsampled to 1kHz
 %                                     from original 30kHz in the recording.
+%                                     Since 2026-11-02 this uses resample()
+%                                     (lowpass first, no aliasing); earlier
+%                                     files used plain downsample().
 %                                     size[trials x trial length x channels] 
 %                  stim_times - vector of stimulus onset timepoints from raw
 %                               data.  size[trials]
@@ -92,7 +99,11 @@
 %                           stim_spike_stimchunks - 3D array of MUA data,
 %                                                   where each timepoint is labelled as 0 or 1, for
 %                                                   no spike or spike. Data is in original 30kHz
-%                                                   sampling rate.
+%                                                   sampling rate. 1 = first sample of a threshold
+%                                                   crossing, found along time within each trial.
+%                                                   NOTE: files saved before 2026-11-02 found crossings
+%                                                   across neighboring trials instead (bug), so their
+%                                                   spike counts differ slightly.
 %                                                   size[trials x 30kHz trial length x channels]
 %                                                 
 %                           tr_keep  - vector of trials considered "good" according to 
@@ -419,9 +430,18 @@ session = Session(directory{1});
 for i = 1:size(session.recordNodes{1,1}. recordings,2)
     datums = session.recordNodes{1,1}. recordings{1,i}.continuous('Acquisition_Board-100.acquisition_board').samples;
     %datums = session.recordNodes{1,1}. recordings{1,i}.continuous('Acquisition_Board-100.Rhythm Data').samples;
-    datums = downsample(datums',30)'; %to 1kH, each timepoint is 1 ms
-    datums = double(datums).*0.1950; %converts int16 to uV
-    data{i} = datums;
+    %datums = downsample(datums',30)'; %to 1kH, each timepoint is 1 ms  <- no anti-alias filter, so anything above 500 Hz (spikes, noise) folded into the LFP band
+    %datums = double(datums).*0.1950; %converts int16 to uV  <- now done per channel below
+    datums_lfp = zeros(size(datums,1),ceil(size(datums,2)/30)); %initialize [channels x timepoints at 1kHz]
+    for ch = 1:size(datums,1)
+        if ch == ProbeInfo.TTLch
+            datums_lfp(ch,:) = downsample(double(datums(ch,:))*0.1950,30); %TTL keeps plain downsample, filtering a square pulse makes it ring and would mess up stim time detection
+        else
+            datums_lfp(ch,:) = resample(double(datums(ch,:))*0.1950,1000,30000); %int16 to uV, then lowpass + downsample to 1kHz so nothing aliases. each timepoint is 1 ms
+        end
+    end
+    data{i} = datums_lfp;
+    clear datums_lfp
     
 end
 data = horzcat(data{:}); %shape is total channels (normal + TTL) x timepoints
@@ -1730,26 +1750,30 @@ for i = 1:size(session.recordNodes{1,1}. recordings,2)
     datums = session.recordNodes{1,1}. recordings{1,i}.continuous('Acquisition_Board-100.acquisition_board').samples;
     %datums = session.recordNodes{1,1}. recordings{1,i}.continuous('Acquisition_Board-100.Rhythm Data').samples;
     %datums = downsample(datums',3)'; %to 10kH, each timepoint is .1 ms
-    fs = 30000; 
-    datums = double(datums).*0.1950; %converts int16 to uV
-    data{i} =datums;
+    fs = 30000;
+    %datums = double(datums).*0.1950; %converts int16 to uV  <- keep raw int16 here to save memory (4x smaller than double), converted to uV where it's used below
+    data{i} =datums; %still int16 raw counts
     %data = session.recordNodes{1,2}. recordings{1,1}.continuous('File_Reader-100.Data-A').samples;
     %data = data(1:97,1:20000000); % 7 zeros
 end
-data = horzcat(data{:}); % [channels x timepoints in recording]
+data = horzcat(data{:}); % [channels x timepoints in recording], int16 raw counts (x0.1950 = uV)
 clear datums
 %% Find Stim Timepoints: Get indices for onset
 %stimdat = data(97,:); %get the adc data (stimulator trigger-out signal)
 disp('MUA: Finding stim timepoints')
 
-figure(); plot(data(ProbeInfo.TTLch,:)'); 
-normbineTTL = round(data(ProbeInfo.TTLch,:)'./max(data(ProbeInfo.TTLch,:)'));
+ttl = double(data(ProbeInfo.TTLch,:))*0.1950; %TTL chan, int16 to uV
+%figure(); plot(data(ProbeInfo.TTLch,:)');  <- data is int16 now, use the converted ttl instead
+%normbineTTL = round(data(ProbeInfo.TTLch,:)'./max(data(ProbeInfo.TTLch,:)'));  <- ditto
+figure(); plot(ttl');
+normbineTTL = round(ttl'./max(ttl'));
 stim_times = find(diff(normbineTTL)>0);
-clear normbineTTL
-%% filter and get MAD 
+clear normbineTTL ttl
+%% filter and get MAD
 disp('MUA: Filtering out low frequencies')
 
-data_band = bandpass(data(ProbeInfo.ChanIds,:)',[300 6000],fs, 'ImpulseResponse','iir')'; % [channels x timepoints in recording]
+%data_band = bandpass(data(ProbeInfo.ChanIds,:)',[300 6000],fs, 'ImpulseResponse','iir')';  <- data is int16 now, convert to uV on the way in
+data_band = bandpass(double(data(ProbeInfo.ChanIds,:)')*0.1950,[300 6000],fs, 'ImpulseResponse','iir')'; % [channels x timepoints in recording], int16 to uV before filtering
 clear data
 
 
@@ -1793,9 +1817,13 @@ if MUAmyfault == 1
     colmap = cool(7);
     for i = 1:size(MUAchcheck,2)
         figure()
-        title(['Example MAD Thresholds on Ch' MUAchcheck(i)])
+        %title(['Example MAD Thresholds on Ch' MUAchcheck(i)])  <- stuck the channel number in as a character, not a number
+        title(['Example MAD Thresholds on Ch' num2str(MUAchcheck(i))])
         hold on
-        plot(wittled_braindat(MUAchcheck(i),:),'Color','k')
+        ch_trace = reshape(wittled_braindat(MUAchcheck(i),:), size(stim_times,1),[]); % [trials x epoch length]
+        ch_trace = reshape(ch_trace',1,[]); %epochs end-to-end in time order, so it looks like a real trace
+        %plot(wittled_braindat(MUAchcheck(i),:),'Color','k')  <- this plotted the trial-interleaved row (same sample from each trial in a row), not a real trace
+        plot(ch_trace,'Color','k')
         yline(MAD(MUAchcheck(i))*4,'color',colmap(1,:))
         yline(MAD(MUAchcheck(i))*6,'color',colmap(2,:))
         yline(MAD(MUAchcheck(i))*8,'color',colmap(3,:))
@@ -1807,6 +1835,7 @@ if MUAmyfault == 1
         hold off   
     end
     
+    clear ch_trace
     dlgtitle = 'You requested to manually set Spike Threshold';
     prompt = {'Please input a MAD multiplier to set the Spike threshold'};
     fieldsize = [1 50];
@@ -1821,12 +1850,12 @@ else
 end
 
 %get all timepoints over MAD threshold
-spikes = wittled_braindat <= MAD*MUAthresh ;
+spikes = wittled_braindat <= MAD*MUAthresh ; % [channels x trials*epoch length], trial-interleaved, logical
 
 %binarize by treating timepoint of threshold crossing as the spike
 %NOTE: this part could be improved to reflect the more standard spike
 %sorting approach of spike detection
-spikes = cat(2,zeros(chans,1),diff(spikes')'>0); %size of data_band
+%spikes = cat(2,zeros(chans,1),diff(spikes')'>0); %size of data_band  <- wittled_braindat is trial-interleaved (same sample from each trial in a row), so this diff compared neighboring trials instead of neighboring timepoints. onsets are now found within each trial in the loop below
 
 
 %% Split up data into individual trial activity for each channel
@@ -1837,7 +1866,8 @@ disp('MUA: Splitting data into trials and making summary stuff')
 for i = 1:size(wittled_braindat,1)
     channel_data = spikes(i,:);
     banded_data = wittled_braindat(i,:);
-    geoenginned_ch = reshape(channel_data, size(stim_times,1),[]);
+    geoenginned_ch = reshape(channel_data, size(stim_times,1),[]); % [trials x epoch length], over-threshold mask
+    geoenginned_ch = cat(2,zeros(size(geoenginned_ch,1),1),diff(geoenginned_ch,1,2)>0); %threshold crossing onsets, found along time within each trial
     geoband_ch = reshape(banded_data, size(stim_times,1),[]);
     stim_spike_stimchunks(:,:,i) = geoenginned_ch; %with dimensions [trials x epoch length x channels]
     %bandpassed_stimchunks(:,:,i) = geoband_ch;
