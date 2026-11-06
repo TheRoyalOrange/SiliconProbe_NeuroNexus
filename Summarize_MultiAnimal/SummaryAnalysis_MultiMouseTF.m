@@ -31,7 +31,9 @@
 %     stim_tf (complex double, channels x frequencies x samples x trials) - Morlet
 %       wavelet output of the LFP. Assumed 6001 samples at 1 kHz with stim onset
 %       at sample 3000 [inferred: hard-coded preallocation and window defaults]
-%     tr_keep (double, 1 x nKeep) - indices of good trials (only these are analyzed)
+%     tr_keep (double, 1 x trials) - full list of trial indices; all of these are analyzed.
+%       On older files this was only the good trials. On mask-format files, rejected
+%       trials are included too, see the TODO where trs is set.
 %   Probe-map plotting sections only (left over from the MUA script; they need
 %   variables this script never creates):
 %     ProbeInfo (struct), prb (double), superCondis_avg, superCondis_std
@@ -297,6 +299,9 @@ for con = 1:numel(condis)
         disp(['Running Condition ', num2str(con), ' (', condis{con}, '), File ', num2str(file)])
         dat = matfile(strjoin(superCondis_dir{con}(file)));
         %trs =  1:size(dat.stim_tf,4);
+        %TODO: tr_keep is now always the full trial list (never shrunk by permanent removal), so using it
+        %directly here no longer applies tr_remove exclusion: rejected trials get analyzed too.
+        %Update to tr_keep_local = dat.tr_keep(~logical(dat.tr_remove)).
         trs = dat.tr_keep;
         %trs = 1:24;
         %datpower = zeros(length(chans(:,condiFileMice{con}(file))),length(delta),6001,length(trs));

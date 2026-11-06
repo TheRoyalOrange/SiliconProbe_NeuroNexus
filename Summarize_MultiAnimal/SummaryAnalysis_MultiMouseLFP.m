@@ -28,10 +28,12 @@
 %       LFP, 1 kHz, presumably in uV [inferred: units not stated upstream].
 %       Stim onset is assumed at sample 5000 [inferred: P1/P2
 %       windows and peak latencies are measured from 5000]
-%     tr_keep (double, 1 x nKeep) - indices of good trials
-%     tr_remove (double, 1 x nRemove) - indices of rejected trials
-%       NOTE: only their lengths are used; ALL trials
-%       (1:numel(tr_keep)+numel(tr_remove)) are analyzed, rejected ones included
+%     tr_keep (double, 1 x trials) - full list of trial indices (never shrunk by removal)
+%     tr_remove (double, 1 x trials) - 0/1 exclusion mask, same length as tr_keep
+%       (older files: short list of rejected trial indices, or empty)
+%       NOTE: only their lengths are used; this was written for the older format, where
+%       1:numel(tr_keep)+numel(tr_remove) meant ALL trials, rejected ones included.
+%       It does not work on mask-format files, see the TODO where trs is set.
 %
 % Outputs:
 %   tableres (table, (nTrials*nChan) x 16) - one row per trial x channel. Columns:
@@ -290,6 +292,10 @@ for con = 1:numel(condis)
         disp(['Running Condition ', num2str(con), ' (', condis{con}, '), File ', num2str(file)])
         dat = matfile(strjoin(superCondis_dir{con}(file)));
         %trs = 1:24;
+        %TODO: tr_remove is now a same-length exclusion mask on tr_keep (not a short list of removed
+        %indices), so this counts double the real trials and will index past the end of stim_lfp_stimchunks
+        %on mask-format files. Update to tr_keep_local = dat.tr_keep(~logical(dat.tr_remove)), or dat.tr_keep
+        %if you really do want all trials, rejected ones included.
         trs =  1:length(dat.tr_keep)+length(dat.tr_remove);
         %trs = dat.tr_keep;
                
