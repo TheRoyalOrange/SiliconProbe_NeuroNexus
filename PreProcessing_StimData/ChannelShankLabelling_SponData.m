@@ -75,7 +75,7 @@
 
 
 %%
-animal = '20260821-p10';
+animal = '20260921-p8';
 
 save_directory = 'E:\Roy\Processed Silicon Probe Data\ProbeInfo';
 
@@ -178,7 +178,7 @@ for prb = 1:length(probes)
 end
 
 save(fullfile([save_directory '\' animal '-ProbeInfo.mat']),'ProbeInfo')
-
+disp('saved results');
 %% Plot channel and shank activity scores
 % One figure per probe: top = shank score per shank (mean of that shank's
 % channel scores, excluding Ch_Remove channels), bottom = heatmap of

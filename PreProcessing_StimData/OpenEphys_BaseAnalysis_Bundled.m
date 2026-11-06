@@ -19,6 +19,10 @@
 %     animal's recordings. A recording is a consecutive series of trials
 %     for a given condition. Starting/stopping a recording without
 %     changing the file name or condition creates subfolders within it.
+%     Raw .samples are assumed to be int16 counts (x0.1950 = uV); this
+%     is inferred from the conversion code, not documented by the loader.
+%     In the MUA section data is kept as int16 [channels x timepoints]
+%     and converted to uV only where it's used, to save memory.
 %   animal (string) - PROVIDED BY USER. Animal identifier, recommended
 %     format YYYYMMDD-p# [dateOfRecording-postnatalDay]. Used as the
 %     prefix for all output files.
@@ -57,6 +61,8 @@
 %                                     from original 30kHz in the recording, after a
 %                                     300 Hz low-pass (4th-order Butterworth,
 %                                     zero-phase filtfilt) to prevent aliasing. In uV.
+%                                     Some files made from 2026-11-02 on used resample()
+%                                     instead; below 150 Hz the two match.
 %                                     size[trials x trial length x channels] 
 %                  stim_times - stimulus onsets in 1kHz samples of the
 %                               downsampled recording. size[trials x 1]
@@ -99,7 +105,11 @@
 %                           stim_spike_stimchunks - 3D array of MUA data,
 %                                                   where each timepoint is labelled as 0 or 1, for
 %                                                   no spike or spike. Data is in original 30kHz
-%                                                   sampling rate.
+%                                                   sampling rate. 1 = first sample of a threshold
+%                                                   crossing, found along time within each trial.
+%                                                   NOTE: files saved before 2026-11-02 found crossings
+%                                                   across neighboring trials instead (bug), so their
+%                                                   spike counts differ slightly.
 %                                                   size[trials x 30kHz trial length x channels]
 %                           stim_times_30k - stimulus onsets (first high TTL sample
 %                                            of each pulse) in 30kHz samples of the
@@ -133,7 +143,7 @@
 %
 %
 %    [Note: all output figures also have brain area added to prefix
-%    animal-stim-area(i)]
+%    animal-stim-area(i). All figures save to save_directory\Figures_BaseAnalysis\<animal>]
 %    
 %    Probe-lfp_results - figure of mean LFP for each channel, plotted in
 %                        shape of probe (ex. 8x8 probe has an 8x8
@@ -179,41 +189,27 @@
 %close all
 
 %%%Experiment details%%%
-animal = '20260226-p12';
+animal = '20261011-p7';
 %where is the data stored?
-load_directory = 'E:\Roy\Silicon Probe Raw Data\20260226-p12'; %recommend to choose folder for whole experiment
+load_directory = 'E:\Roy\Silicon Probe Raw Data\20261011-p7'; %recommend to choose folder for whole experiment
 
 %where will the output be saved?
 save_directory = 'E:\Roy\Processed Silicon Probe Data'; %this should stay the same for all animals/recordings
 
 stim_all = {
-             % 'whiskerActive'
-             % 'whiskerActive_2'
-             % 'whiskerActive_3'
-             % 'whiskerActive_TTX'  
-             % 'whiskerActive_TTX_2'
-             % 'whiskerActive_TTX_3'
-             'whisker'
-             'whisker_2'
+             'whiskeractive'
+             'whiskeractive_2'
+             %'whiskeractive_3'
+             'whiskeractive_TTX'
+             'whiskeractive_TTX_2'
+             %'whiskeractive_TTX_3'
+
+            % 'whisker_2'
             % 'whisker_3'
             % 'whisker_4'
             % %'whisker_5'
-             'light22_32'
-             'light22_32_2'
-             'light22_32-n-whisker'
-             'light22_32-n-whisker_2'
-             'light22_40'
-             'light22_40_2'
-             'light22_40-n-whisker'
-             'light22_40-n-whisker_2'
-             'light22_48'
-             'light22_48_2'
-             'light22_48-n-whisker'
-             'light22_48-n-whisker_2'
-             'light22_56'
-             'light22_56_2'
-             'light22_56-n-whisker'
-             'light22_56-n-whisker_2'
+            % 'light22_40-n-whisker'
+            % 'light22_40-n-whisker_2'
             % 'light22_40-n-whisker_3'
             % 'light22_40-n-whisker_4'
             % %'light22_40-n-whisker_5'
@@ -265,7 +261,7 @@ mr_clean = 1;
 LFP = 1; %local field potential
 CSD = 1; %current source density
 TF = 0; %time frequency
-MUA = 1; %Spiking
+MUA = 0; %Spiking
 
 %want to check for bad trials?
 TrRemove = 0;
@@ -435,8 +431,8 @@ if isfolder([save_directory '\ProbeInfo']) == false
 end
 
 %create figures folder for animal
-if isfolder([save_directory '\AnimalFigures\' animal]) == false
-    mkdir([save_directory '\AnimalFigures\' animal])  
+if isfolder([save_directory '\Figures_BaseAnalysis\' animal]) == false
+    mkdir([save_directory '\Figures_BaseAnalysis\' animal])  
 end
 
 %%
@@ -552,6 +548,18 @@ for i = 1:size(session.recordNodes{1,1}. recordings,2)
     end
     data{i} = lfp1k;
     seglen1k(i) = size(lfp1k,2); %length of this piece after downsampling
+    %resample version, replaced by the 300 Hz filtfilt above: resample rings at the ends of each recording piece
+    %(up to about half of any DC offset) and lets 500-550 Hz fold into the top of the band. It is ~10x+ faster though
+    %datums_lfp = zeros(size(datums,1),ceil(size(datums,2)/30)); %initialize [channels x timepoints at 1kHz]
+    %for ch = 1:size(datums,1)
+    %    if ch == ProbeInfo.TTLch
+    %        datums_lfp(ch,:) = downsample(double(datums(ch,:))*0.1950,30); %TTL keeps plain downsample, filtering a square pulse makes it ring and would mess up stim time detection
+    %    else
+    %        datums_lfp(ch,:) = resample(double(datums(ch,:))*0.1950,1000,30000); %int16 to uV, then lowpass + downsample to 1kHz so nothing aliases. each timepoint is 1 ms
+    %    end
+    %end
+    %data{i} = datums_lfp;
+    %clear datums_lfp
 end
 data = horzcat(data{:}); %shape is total channels (normal + TTL) x timepoints
 clear datums lfp1k chdat z p k
@@ -1104,7 +1112,7 @@ if artistemode == 1
         
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'lfp_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     
     end
@@ -1133,7 +1141,7 @@ else
         
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'lfp_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     
     end
@@ -1366,7 +1374,7 @@ end
 
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'CSD_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     
 end
@@ -1423,7 +1431,7 @@ sgtitle([animal ' ' ProbeInfo.Areas{prb} '-Probe ' stim ' CSD'])
 
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'CSD_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     
 end
@@ -1785,7 +1793,7 @@ for chan = 1:numel(poilayoutT{prb})
 end
  if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'TF_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
  end
 end
 
@@ -1821,7 +1829,7 @@ for chan = 1:numel(poilayoutT{prb})
 end
  if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'TF_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
  end
 end
 end
@@ -1898,18 +1906,19 @@ clear data
 for i = 1:size(session.recordNodes{1,1}. recordings,2)
     datums = session.recordNodes{1,1}. recordings{1,i}.continuous('Acquisition_Board-100.acquisition_board').samples;
     %datums = downsample(datums',3)'; %to 10kH, each timepoint is .1 ms
-    fs = 30000; 
-    datums = double(datums).*0.1950; %converts int16 to uV
-    data{i} =datums;
+    fs = 30000;
+    %datums = double(datums).*0.1950; %converts int16 to uV  <- keep raw int16 here to save memory (4x smaller than double), converted to uV where it's used below
+    data{i} =datums; %still int16 raw counts
     %data = session.recordNodes{1,2}. recordings{1,1}.continuous('File_Reader-100.Data-A').samples;
     %data = data(1:97,1:20000000); % 7 zeros
 end
-data = horzcat(data{:});  % [channels x timepoints in recording]
+data = horzcat(data{:});  % [channels x timepoints in recording], int16 raw counts (x0.1950 = uV)
 clear datums
 %% Find Stim Timepoints: Get indices for onset
 %stimdat = data(97,:); %get the adc data (stimulator trigger-out signal)
 disp('MUA: Finding stim timepoints')
 
+%data is int16 here, fine for this: the threshold below is relative to the TTL's own max, so no uV conversion needed
 figure(); plot(data(ProbeInfo.TTLch,:)');
 ttl_high = data(ProbeInfo.TTLch,:)' >= 0.5*max(data(ProbeInfo.TTLch,:)); %TTL above half its max = pulse on [timepoints x 1]
 stim_times = find(diff(ttl_high)>0)+1; %rising edges: first high sample of each pulse (stimulus onset)
@@ -1933,10 +1942,17 @@ stimcheck(recnum).mua.glitch_times = stim_times(glitch);   %onsets ignored as gl
 stimcheck(recnum).mua.glitch_width = pulse_width(glitch);
 stim_times = stim_times(~glitch);
 clear ttl_high pulse_ends nextend glitch pulse_width
+%rounded-TTL version from the int16 update, replaced by the half-max + glitch check above (no first-sample +1, no glitch rejection)
+%ttl = double(data(ProbeInfo.TTLch,:))*0.1950; %TTL chan, int16 to uV
+%figure(); plot(ttl');
+%normbineTTL = round(ttl'./max(ttl'));
+%stim_times = find(diff(normbineTTL)>0);
+%clear ttl
 %% filter
 disp('MUA: Filtering out low frequencies')
 
-data_band = bandpass(data(ProbeInfo.ChanIds,:)',[300 6000],fs, 'ImpulseResponse','iir')'; % [channels x timepoints in recording]
+%data_band = bandpass(data(ProbeInfo.ChanIds,:)',[300 6000],fs, 'ImpulseResponse','iir')';  <- data is int16 now, convert to uV on the way in
+data_band = bandpass(double(data(ProbeInfo.ChanIds,:)')*0.1950,[300 6000],fs, 'ImpulseResponse','iir')'; % [channels x timepoints in recording], int16 to uV before filtering
 clear data
 
 
@@ -1978,9 +1994,13 @@ if MUAmyfault == 1
     colmap = cool(7);
     for i = 1:size(MUAchcheck,2)
         figure()
-        title(['Example MAD Thresholds on Ch' MUAchcheck(i)])
+        %title(['Example MAD Thresholds on Ch' MUAchcheck(i)])  <- stuck the channel number in as a character, not a number
+        title(['Example MAD Thresholds on Ch' num2str(MUAchcheck(i))])
         hold on
-        plot(wittled_braindat(MUAchcheck(i),:),'Color','k')
+        ch_trace = reshape(wittled_braindat(MUAchcheck(i),:), size(stim_times,1),[]); % [trials x epoch length]
+        ch_trace = reshape(ch_trace',1,[]); %epochs end-to-end in time order, so it looks like a real trace
+        %plot(wittled_braindat(MUAchcheck(i),:),'Color','k')  <- this plotted the trial-interleaved row (same sample from each trial in a row), not a real trace
+        plot(ch_trace,'Color','k')
         yline(MAD(MUAchcheck(i))*4,'color',colmap(1,:))
         yline(MAD(MUAchcheck(i))*6,'color',colmap(2,:))
         yline(MAD(MUAchcheck(i))*8,'color',colmap(3,:))
@@ -1992,6 +2012,7 @@ if MUAmyfault == 1
         hold off   
     end
     
+    clear ch_trace
     dlgtitle = 'You requested to manually set Spike Threshold';
     prompt = {'Please input a MAD multiplier to set the Spike threshold'};
     fieldsize = [1 50];
@@ -2006,12 +2027,12 @@ else
 end
 
 %get all timepoints over MAD threshold
-spikes = wittled_braindat <= MAD*MUAthresh ;
+spikes = wittled_braindat <= MAD*MUAthresh ; % [channels x trials*epoch length], trial-interleaved, logical
 
 %binarize by treating timepoint of threshold crossing as the spike
 %NOTE: this part could be improved to reflect the more standard spike
 %sorting approach of spike detection
-spikes = cat(2,zeros(chans,1),diff(spikes')'>0); %size of data_band
+%spikes = cat(2,zeros(chans,1),diff(spikes')'>0); %size of data_band  <- wittled_braindat is trial-interleaved (same sample from each trial in a row), so this diff compared neighboring trials instead of neighboring timepoints. onsets are now found within each trial in the loop below
 
 
 %% Split up data into individual trial activity for each channel
@@ -2022,7 +2043,8 @@ disp('MUA: Splitting data into trials and making summary stuff')
 for i = 1:size(wittled_braindat,1)
     channel_data = spikes(i,:);
     banded_data = wittled_braindat(i,:);
-    geoenginned_ch = reshape(channel_data, size(stim_times,1),[]);
+    geoenginned_ch = reshape(channel_data, size(stim_times,1),[]); % [trials x epoch length], over-threshold mask
+    geoenginned_ch = cat(2,zeros(size(geoenginned_ch,1),1),diff(geoenginned_ch,1,2)>0); %threshold crossing onsets, found along time within each trial
     geoband_ch = reshape(banded_data, size(stim_times,1),[]);
     stim_spike_stimchunks(:,:,i) = geoenginned_ch; %with dimensions [trials x epoch length x channels]
     %bandpassed_stimchunks(:,:,i) = geoband_ch;
@@ -2118,7 +2140,7 @@ disp('MUA: Making pictures for you')
     
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'SpikeRaster_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
     end
 
@@ -2142,7 +2164,7 @@ disp('MUA: Making pictures for you')
         
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'SpikeRaster_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
 
     end
@@ -2197,7 +2219,7 @@ if showme == 1
         end
          if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'Spikemean_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
          end
     end
    else
@@ -2219,7 +2241,7 @@ if showme == 1
         end
         if plotsave == 1
             fname = sprintf([animal '-' stim '-' ProbeInfo.Areas{prb} '_Probe' '-' 'Spikemean_results']);
-            savefig(gcf,[save_directory '\AnimalFigures\' animal '\' fname],'compact')
+            savefig(gcf,[save_directory '\Figures_BaseAnalysis\' animal '\' fname],'compact')
         end
    
     end
@@ -2303,7 +2325,8 @@ for r = 1:numel(runreport)
     figkinds = {'lfp_results','CSD_results','TF_results','SpikeRaster_results','Spikemean_results'};
     for a = 1:numel(runreport(r).areas)
         for k = 1:numel(figkinds)
-            expected{end+1} = fullfile('AnimalFigures',animal,[animal '-' runreport(r).stim '-' runreport(r).areas{a} '_Probe-' figkinds{k} '.fig']);
+            %expected{end+1} = fullfile('AnimalFigures',animal,[animal '-' runreport(r).stim '-' runreport(r).areas{a} '_Probe-' figkinds{k} '.fig']); %old folder name, figures now save to Figures_BaseAnalysis
+            expected{end+1} = fullfile('Figures_BaseAnalysis',animal,[animal '-' runreport(r).stim '-' runreport(r).areas{a} '_Probe-' figkinds{k} '.fig']);
         end
     end
     fprintf('Files written:\n')
