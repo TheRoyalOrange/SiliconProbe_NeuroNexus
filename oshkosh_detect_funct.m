@@ -7,9 +7,11 @@ function [oscillations, snippets, probeSnippets] = oshkosh_detect_funct(animal, 
 %   listed, loads raw data, downsamples to 1kHz and converts to
 %   microvolts, bandpasses each channel into a single band (bounds set by
 %   fq_range), computes a moving-RMS envelope, and detects
-%   threshold-crossing events (RMS > median + 2*MAD, peak > median +
-%   3*MAD) per channel
-%   using median-absolute-deviation statistics. Adjacent events closer
+%   threshold-crossing events (RMS > median + 3*MAD, peak > median +
+%   4*MAD) per channel
+%   using median-absolute-deviation statistics. Thresholds are each
+%   channel's own, so results for one probe don't depend on which other
+%   probes are analyzed alongside it. Adjacent events closer
 %   than 500ms are merged; events shorter than 300ms or too close to the
 %   recording edges are discarded. Flags whether each event overlaps a
 %   stimulus TTL pulse (if present). Adapted from Opatz lab / Buszaki lab
@@ -420,7 +422,7 @@ end
 for ch = 1:length(chanals)
 
     input_data = data_filt_rms(ch,:);
-    thresholded = input_data > (data_med(ch)+(data_MAD(ch)*3)); %this is effectively the lower threshold, later is a step that requires a peak above 3 MAD
+    thresholded = input_data > (data_med(ch)+(data_MAD(ch)*3)); %this is effectively the lower threshold, later is a step that requires a peak above 4 MAD
 
 %%
 
@@ -472,7 +474,8 @@ for ch = 1:length(chanals)
             for i = 1 : size(secondPass, 1)
                 maxValue_rel = max(input_data([secondPass(i, 1) : secondPass(i, 2)]));
                 %maxValue_abs = max(convolvedSignal([secondPass(i, 1) : secondPass(i, 2)]));
-                if maxValue_rel > data_med+(data_MAD*4) %rel_thresholds(2) || maxValue_abs > abs_thresholds(2)
+                %if maxValue_rel > data_med+(data_MAD*4) %rel_thresholds(2) || maxValue_abs > abs_thresholds(2) %OLD: compared against EVERY channel's threshold (all probes), so a noisy channel anywhere raised the bar for all channels
+                if maxValue_rel > data_med(ch)+(data_MAD(ch)*4) %peak must beat THIS channel's own median + 4 MAD
                     thirdPass = [thirdPass ; secondPass(i, :)];
                     peakNormalizedPower = [peakNormalizedPower ; maxValue_rel];
                     %peakAbsPower = [peakAbsPower ; maxValue_abs];

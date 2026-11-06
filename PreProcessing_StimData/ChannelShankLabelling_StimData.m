@@ -80,7 +80,7 @@
 %%
 
 animal = '20260821-p10';
-probes = [1]; %which probes in the recording to look at? 
+probes = [1 2]; %which probes in the recording to look at? 
 
 
 save_directory = 'E:\Roy\Processed Silicon Probe Data\ProbeInfo';

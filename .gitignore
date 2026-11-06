@@ -4,7 +4,8 @@ Thumbs.db
 desktop.ini
 
 # === MATLAB ===
-*.asv          # autosave files
+# autosave files
+*.asv
 *.m~
 slprj/
 *.slxc
@@ -20,6 +21,10 @@ octave-workspace
 # *.avi
 # *.mp4
 # /data/raw/
+
+# Spike sorting folder: holds raw recordings (3.9 GB recording.dat) and sorter output.
+# Left out of the repo for now, scripts here have no GitHub backup yet.
+SpikeSorting/
 
 # === Editor / environment ===
 .vscode/
