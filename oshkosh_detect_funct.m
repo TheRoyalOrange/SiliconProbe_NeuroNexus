@@ -113,6 +113,14 @@ function [oscillations, snippets, probeSnippets] = oshkosh_detect_funct(animal, 
 %         had no detected TTL activity. NOTE: added so downstream
 %         visualization (oscillation_plotEvents.m) can mark stim times on
 %         a plotted event even when the event itself doesn't overlap one.
+%       .chBaseline_med (cell, 1 x Nfiles, indexed like oscillations.files)
+%         - each [1 x Nchan] double, indexed like chanals: that channel's
+%         median filtered RMS envelope over the file (minus the first/last
+%         5 s), in uV. The same baseline the event thresholds are built on.
+%         Used by NNx_editProbeInfo_ChLabel_SponData.m to subtract each
+%         channel's noise floor from its activity score.
+%       .chBaseline_MAD (cell, same shape) - matching median absolute
+%         deviation of that RMS envelope (/0.6745), in uV.
 %     chEvent fields (cell array, 1 x Nchan, indexed by position in
 %     oscillations.chanals - one detected event per channel, independent
 %     of every other channel):
@@ -234,6 +242,8 @@ oscillations.probes = probes;
 oscillations.chan_probe = chan_probe;
 oscillations.files = data_directory;
 oscillations.stim_times = cell(size(data_directory,1),1);
+oscillations.chBaseline_med = cell(size(data_directory,1),1); %per file: each channel's median RMS (its noise floor), [1 x Nchan] in uV
+oscillations.chBaseline_MAD = cell(size(data_directory,1),1); %per file: matching MAD of the RMS, [1 x Nchan] in uV
 
 snippets.chanals = chanals;
 snippets.files = data_directory;
@@ -406,6 +416,8 @@ data_MAD(ch) = median(abs(data_filt_rms(ch,5000:end-5000)-median(data_filt_rms(c
 data_med(ch) = median(data_filt_rms(ch,5000:end-5000),2);
 
 end
+oscillations.chBaseline_med{file} = data_med; %keep this file's baselines for downstream scores (e.g. the spontaneous activity label)
+oscillations.chBaseline_MAD{file} = data_MAD;
 %% In case youd like to visualize the thresholds
 %chcheck = 4;
 %figure()

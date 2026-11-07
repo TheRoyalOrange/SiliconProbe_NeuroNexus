@@ -7,7 +7,11 @@
 %   scored separately in NNx_editProbeInfo_ChLabel_StimData.m). Detects
 %   oscillatory probe events (prbEvent) with oshkosh_detect_funct, then for
 %   every prbEvent NOT overlapping a stimulus sums each channel's moving-RMS
-%   envelope (200-sample window) over the event window. Shank score = mean
+%   envelope (200-sample window) minus that channel's baseline (its median
+%   RMS in the same recording, from oshkosh_detect_funct) over the core
+%   event window (not the +/- 1 s padding). So a channel's noise floor
+%   doesn't count as activity (changed 2026-11-07; labels saved before that
+%   used the raw RMS over the padded window). Shank score = mean
 %   of the channel scores within each ProbeMaps column. The channel and shank
 %   scores are added to ProbeInfo as the SponActivity label (in
 %   ProbeInfo.ChanLabels / ProbeInfo.ShankLabels) and ProbeInfo is saved back
@@ -53,9 +57,15 @@
 %       prbsnippets.event_data{p}{event} (double, Nchan x window samples) -
 %         filtered LFP (uV, 1 kHz) of ALL analyzed channels for each prbEvent
 %       oscillations.prbEvent_during_stim{p} (logical/0-1 per prbEvent)
+%       oscillations.prbEvent_timestamps{p} / .prbEvent_ext_timestamps{p}
+%         ([start stop] per prbEvent) - locate the core event in the snippet
+%       oscillations.prbEvent_file_index{p} + .chBaseline_med{file} - each
+%         channel's baseline (median RMS, uV) in that event's recording
 %   chActivityScore_Spon (cell, 1 x length(probes)) - each Nchan x 1 double:
-%     summed moving-RMS over probes(p)'s non-stim prbEvents, for ALL analyzed
-%     channels, in prbsnippets.chanals order (a.u., uV*samples)
+%     moving-RMS minus the channel's baseline, summed over the core window of
+%     probes(p)'s non-stim prbEvents, for ALL analyzed channels, in
+%     prbsnippets.chanals order (a.u., uV*samples above baseline; can be
+%     slightly negative for a channel quieter than usual during events)
 %   shnkActivityScore_Spon (cell, 1 x length(probes)) - each 1 x Nshanks
 %     double: mean channel score per shank (ProbeMaps column) of probes(p)
 %   Figures (one per probe, not saved) - top: shnkActivityScore_Spon line
@@ -123,17 +133,26 @@ oscillation_plotEvents(ProbeInfo,oscillations, prbsnippets)
 
 %% Measure total spontaneous activity of each channel
 
-%compute RMSsum of each channel for each probe event
+%compute each channel's RMS above its own baseline, summed over each (non-stim) probe event
 chActivityScore_Spon = cell(1,length(probes));
 shnkActivityScore_Spon = cell(1,length(probes));
 for prb = 1:length(probes)
     chRMSsum_total = zeros(length(prbsnippets.chanals),1);
     for snp =  1:length(prbsnippets.event_data{prb})
         if oscillations.prbEvent_during_stim{prb}(snp) == 0
-        dat_snp = prbsnippets.event_data{prb}{snp};
-        snp_sums = [];
+        dat_snp = prbsnippets.event_data{prb}{snp}; % [channels x extended window], event +/- 1 s
+        %baseline = each channel's median RMS in the recording this event came from (its noise floor)
+        file_snp = oscillations.prbEvent_file_index{prb}(snp);
+        base_snp = oscillations.chBaseline_med{file_snp}; % [1 x channels], uV
+        %where the core event sits inside the extended snippet (the snippet starts at the extended start)
+        ts = oscillations.prbEvent_timestamps{prb}(snp,:);
+        ext = oscillations.prbEvent_ext_timestamps{prb}(snp,:);
+        core = (ts(1)-ext(1)+1):(ts(2)-ext(1)+1);
+        snp_sums = zeros(1,size(dat_snp,1));
         for ch = 1:size(dat_snp,1)
-        snp_sums(ch) = sum(sqrt(movmean(dat_snp(ch,:).^2,200)),2);
+        %snp_sums(ch) = sum(sqrt(movmean(dat_snp(ch,:).^2,200)),2);  <- replaced: summed raw RMS over the whole extended window, so a noisier channel scored higher just from its noise floor (and the 1 s padding added even more of it)
+        ch_rms = sqrt(movmean(dat_snp(ch,:).^2,200)); %RMS over the whole snippet, so the padding keeps movmean edge effects out of the core
+        snp_sums(ch) = sum(ch_rms(core) - base_snp(ch)); %RMS above baseline, summed over the core event only
         end
         chRMSsum_total = chRMSsum_total + snp_sums';
         else
@@ -217,7 +236,7 @@ for prb = 1:length(probes)
     colormap(ax2,seqmap);
     cb = colorbar(ax2);
     cb.Layout.Tile = 'east'; %keep colorbar outside both tiles so the shank columns stay aligned
-    cb.Label.String = 'Channel score (summed RMS, a.u.)';
+    cb.Label.String = 'Channel score (summed RMS above baseline, a.u.)';
     xticks(ax2,1:nshnk); yticks(ax2,1:nrow);
     xlabel(ax2,'Shank (ProbeMaps column)'); ylabel(ax2,'ProbeMaps row');
     linkaxes([ax1 ax2],'x');
