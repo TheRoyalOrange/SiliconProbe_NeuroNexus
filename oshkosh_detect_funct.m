@@ -72,7 +72,7 @@ function [oscillations, snippets, probeSnippets] = oshkosh_detect_funct(animal, 
 %     <save_directory>\ProbeInfo\<animal>-ProbeInfo.mat. Fields used:
 %       .ProbeIds (cell array, 1 x probenum) - channel IDs belonging to
 %         each probe. NOTE (inferred data contract): this field's own
-%         header comment in OpenEphys_BaseAnalysis.m claims local per-probe
+%         header comment in NNx_BaseAnalysis.m claims local per-probe
 %         numbering ("starts at 1"), but the code that builds it
 %         (probeids{i} = reshape(probemaps{i},[],1)) just reshapes
 %         ProbeMaps, so for probe 2+ it actually holds the same raw/offset
@@ -201,8 +201,8 @@ function [oscillations, snippets, probeSnippets] = oshkosh_detect_funct(animal, 
 % Dependencies: Requires the OpenEphys MATLAB tools (Session class) and
 %   Signal Processing Toolbox (bandpass, movmean). Requires
 %   <animal>-ProbeInfo.mat to already exist under save_directory (built by
-%   OpenEphys_BaseAnalysis.m or a variant, with Ch_Remove populated via
-%   OpenEphys_editProbeInfo_ChRemove.m), unless ProbeInfo is passed in
+%   NNx_BaseAnalysis.m or a variant, with Ch_Remove populated via
+%   NNx_editProbeInfo_ChRemove.m), unless ProbeInfo is passed in
 %   directly.
 
 if nargin < 7 || isempty(ProbeInfo)

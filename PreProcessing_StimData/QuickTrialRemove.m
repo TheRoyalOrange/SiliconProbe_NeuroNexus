@@ -3,7 +3,7 @@
 % Description: Downstream, standalone trial-curation utility. Lets the
 %   user visually inspect LFP and spike-raster traces for one channel
 %   of an already-preprocessed animal/condition (output of
-%   OpenEphys_BaseAnalysis.m or a variant), manually choose trials to
+%   NNx_BaseAnalysis.m or a variant), manually choose trials to
 %   exclude, and persist the updated tr_keep/tr_remove back into the
 %   corresponding LFP.mat, spiking_results.mat, and TF_results.mat
 %   files (via save(...,'-append')). Deliberately does NOT update
@@ -38,7 +38,7 @@
 %     and filename_TF_results.mat. Not written to CSD_results.mat (see
 %     Description).
 %
-% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the
+% Dependencies: Expects NNx_BaseAnalysis.m (or the
 %   _MixedTrials variant) to have already been run for this
 %   animal/condition, producing the LFP.mat, spiking_results.mat, and
 %   TF_results.mat files this script loads/appends to.

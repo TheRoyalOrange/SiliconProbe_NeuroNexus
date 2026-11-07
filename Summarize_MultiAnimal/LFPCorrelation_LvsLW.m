@@ -86,7 +86,7 @@
 %   csv (save_csv = 1) - tableres to <csv_directory>\<name>.csv
 %   figures (plotsave = 1) - <save_directory>\Figures_LFPCorr\<animal>\ and \Figures_LFPCorr\
 %
-% Dependencies: OpenEphys_BaseAnalysis*.m (LFP files, ProbeInfo); ConditionalTrialRemove(_callable).m
+% Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); ConditionalTrialRemove(_callable).m
 %   (tr_remove mask format); ProbeInfo.ShankLabels from the channel/shank labelling scripts (heatmaps);
 %   plotLWIntensityCompare_multianimal.m / plotLWTTXCompare_multianimal.m (heatplot); uipickfiles.m;
 %   Signal Processing Toolbox (butter, zp2sos, filtfilt); Statistics Toolbox (corr, ranksum,

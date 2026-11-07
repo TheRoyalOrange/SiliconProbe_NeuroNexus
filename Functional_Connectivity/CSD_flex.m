@@ -22,7 +22,7 @@
 %       'ChRemove' true:  same list with ProbeInfo.Ch_Remove{prb} dropped
 %                         (= chansuse in ITPC_PhaseReset_singleanimal.m)
 %     A single trial must still be 1 x time x channels.
-%   ProbeInfo (struct) - from OpenEphys_BaseAnalysis.m; uses
+%   ProbeInfo (struct) - from NNx_BaseAnalysis.m; uses
 %     .ProbeIds{prb} (raw channel IDs on the probe), .Ch_Remove{prb} (raw
 %     channel IDs to exclude; may be missing for this probe), .ProbeMaps{prb}
 %     (2D [depth rows x shanks] matrix of raw channel IDs). INFERRED: rows
@@ -36,7 +36,7 @@
 %       rows, um
 %     'radius' (double, default 177) - radius of the current disc around
 %       each contact, um (default = the CSDallshank call in
-%       OpenEphys_BaseAnalysis.m)
+%       NNx_BaseAnalysis.m)
 %     'conductivity' (double, default 0.3) - extracellular conductivity, S/m
 %     'minchans' (int, default 3) - shanks with fewer channels in data get
 %       NaN CSD
@@ -53,8 +53,8 @@
 %     .ChRemove, .spacing_um, .radius_um, .conductivity, .minchans - options used
 %     .units (char) - 'uA/mm^3'
 %
-% Dependencies: none (ProbeInfo from OpenEphys_BaseAnalysis.m,
-%   Ch_Remove from OpenEphys_editProbeInfo_ChRemove.m).
+% Dependencies: none (ProbeInfo from NNx_BaseAnalysis.m,
+%   Ch_Remove from NNx_editProbeInfo_ChRemove.m).
 
 function [csd, csdinfo] = CSD_flex(data, ProbeInfo, prb, varargin)
 

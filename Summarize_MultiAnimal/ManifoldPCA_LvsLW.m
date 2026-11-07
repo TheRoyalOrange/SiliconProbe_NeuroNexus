@@ -147,7 +147,7 @@
 %   jointexpl (cell, animals x pairs x signals) - (double, PCs x 1) percent variance per shared PC
 %   csv (save_csv = 1) - stats_win, you'll get a file name box
 %
-% Dependencies: OpenEphys_BaseAnalysis*.m (LFP files, ProbeInfo); ConditionalTrialRemove(_callable).m
+% Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); ConditionalTrialRemove(_callable).m
 %   (tr_remove mask format); CSD_flex.m (Functional_Connectivity folder, CSD signals); uipickfiles.m;
 %   Statistics Toolbox (pca, signrank, fitlme); Signal Processing Toolbox (butter, zp2sos, filtfilt,
 %   envelope); MATLAB R2019b+ (tiledlayout).

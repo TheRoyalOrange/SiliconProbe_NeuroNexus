@@ -20,7 +20,7 @@
 %   MUA: spikes binned to 1 ms and smoothed into a firing rate (50 ms moving mean);
 %     AUC in P1/P2/All windows, and the peak rate and its latency in P1/P2.
 %   TF: Morlet wavelet power in each band (whole-Hz frequencies, the same cycle rule
-%     as OpenEphys_BaseAnalysis*.m), in P1/P2/All windows relative to the same
+%     as NNx_BaseAnalysis*.m), in P1/P2/All windows relative to the same
 %     trial's baseline.
 %
 % Inputs:
@@ -43,7 +43,7 @@
 %   E:\Roy\Processed Silicon Probe Data\LFP\<animal>\<animal>-<stim>-LFP.mat, each containing:
 %     stim_lfp_stimchunks (double, trials x samples x channels) - peri-stimulus LFP, 1 kHz,
 %       presumably in uV [inferred: units not stated upstream]. Stim onset is sample 5001
-%       (stim_onset): OpenEphys_BaseAnalysis*.m epochs trials as stim_times-pre:stim_times+post
+%       (stim_onset): NNx_BaseAnalysis*.m epochs trials as stim_times-pre:stim_times+post
 %       with pre = 5000 samples. Channel index is assumed to equal the raw channel ID
 %       [inferred: holds when ProbeInfo.ChanIds = 1:Chans]
 %     tr_keep (double, 1 x nTrials) - trial numbers (indices into dim 1 of the data)
@@ -66,7 +66,7 @@
 %       column s = shank s, row 1 = top of the shank
 %     ProbeInfo.Ch_Remove (cell, 1 x nProbes) - raw channel IDs to exclude per probe;
 %       missing/empty = exclude none. Assumed indexed by probe number
-%       [inferred: OpenEphys_BaseAnalysis*.m indexes it by position in poi, which is
+%       [inferred: NNx_BaseAnalysis*.m indexes it by position in poi, which is
 %       the same only when poi = 1:ProbeNum (the default)]
 %     ProbeInfo.ShankLabels (cell, 1 x nProbes, optional) - per probe a struct (or [] if not labelled);
 %       each field holding one number per shank (1 x nShanks, ProbeMaps column order, raw values)
@@ -84,7 +84,7 @@
 %   stim_onset, P1wind, P2wind, Allwind (double) - LFP/MUA stimulus sample (5001) and windows
 %     as samples: 75-350, 350-3000 and 75-3000 ms post stimulus
 %   tf_seg, tf_onset, tfP1wind, tfP2wind, tfAllwind, tfbasewind (double) - TF segment (LFP
-%     samples 2000:8000, as OpenEphys_BaseAnalysis*.m), stimulus sample within it (3002),
+%     samples 2000:8000, as NNx_BaseAnalysis*.m), stimulus sample within it (3002),
 %     windows 75-350, 350-2999, 75-2999 ms and baseline -2102..-102 ms
 %   lfp_sos, lfp_g (double) - the lfp_band Butterworth filter as second-order sections and gain
 %   metriccols (struct) - one field per measure (column name), each a column over all rows
@@ -119,7 +119,7 @@
 %       Morlet wavelet power over the band's frequencies and the P1 (75-350 ms), P2 (350-2999 ms)
 %       or All (75-2999 ms) window, divided by the same trial's mean band power over the
 %       baseline (-2102..-102 ms). Ratio, unitless; 1 = no change. Wavelet as in
-%       OpenEphys_BaseAnalysis*.m (4 s long, all trials of the file joined end to end, LFP
+%       NNx_BaseAnalysis*.m (4 s long, all trials of the file joined end to end, LFP
 %       samples 2000:8000, single precision) with cycles(f) = 6*(10/6)^((f-1)/149), the same
 %       6-to-10-cycle rule BaseAnalysis uses over 1-150 Hz; on whole-Hz frequencies, so values
 %       differ very slightly from the stored stim_tf (which uses 0.993 Hz steps)
@@ -142,8 +142,8 @@
 %     (file name chosen by the user in a dialog. NOTE: the existing-name check
 %     omits '.csv', so an existing csv with the same name IS overwritten)
 %
-% Dependencies: OpenEphys_BaseAnalysis*.m (writes *-LFP.mat, *-spiking_results.mat and
-%   <animal>-ProbeInfo.mat); OpenEphys_editProbeInfo_ChRemove.m (sets Ch_Remove);
+% Dependencies: NNx_BaseAnalysis*.m (writes *-LFP.mat, *-spiking_results.mat and
+%   <animal>-ProbeInfo.mat); NNx_editProbeInfo_ChRemove.m (sets Ch_Remove);
 %   ConditionalTrialRemove.m / ConditionalTrialRemove_callable.m (tr_remove mask format,
 %   tr_remove_conditional labels); ProbeInfo.ShankLabels from the channel/shank labelling
 %   scripts. Requires uipickfiles (File Exchange), the Signal Processing Toolbox (butter,
@@ -380,7 +380,7 @@ Allwind = stim_onset + (75:3000); %75-3000
 [z,p,k] = butter(2, lfp_band/(1000/2), 'bandpass');
 [lfp_sos,lfp_g] = zp2sos(z,p,k);
 
-%TF: the wavelet is run on LFP samples 2000:8000 of all trials joined end to end, as in OpenEphys_BaseAnalysis*.m
+%TF: the wavelet is run on LFP samples 2000:8000 of all trials joined end to end, as in NNx_BaseAnalysis*.m
 tf_seg = 2000:8000;
 tf_onset = stim_onset - tf_seg(1) + 1;   %stimulus sample within the TF segment (3002)
 tfP1wind = tf_onset + (75:350);          %ms post stimulus 75-350
@@ -468,7 +468,7 @@ for con = 1:numel(condis)
         end
 
         %TF: Morlet wavelet power of each band, for the kept channels and good trials, computed as
-        %OpenEphys_BaseAnalysis*.m builds stim_tf (all trials joined, single precision)
+        %NNx_BaseAnalysis*.m builds stim_tf (all trials joined, single precision)
         tfdata = single(lfpall(:,tf_seg,:));
         ntrall = size(tfdata,1);
         ntfsamp = numel(tf_seg);

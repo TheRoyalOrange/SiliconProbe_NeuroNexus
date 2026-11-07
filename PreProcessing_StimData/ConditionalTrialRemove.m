@@ -79,7 +79,7 @@
 %     files under <save_directory>\LFP\<animal> to include, via
 %     uipickfiles. INFERRED DATA CONTRACT: each selected file is named
 %     <animal>-<condition>-LFP.mat (matching how
-%     OpenEphys_BaseAnalysis.m, or a variant, actually names LFP.mat
+%     NNx_BaseAnalysis.m, or a variant, actually names LFP.mat
 %     output) - the condition name fed to
 %     ConditionalTrialRemove_callable.m is recovered by stripping the
 %     <animal>- prefix and -LFP suffix back off the picked filename.
@@ -108,7 +108,7 @@
 % Dependencies: ConditionalTrialRemove_callable.m (same folder);
 %   uipickfiles (must be on the MATLAB path - already used elsewhere in
 %   this repo, e.g. Summarize_MultiAnimal\SummaryAnalysis_MultiMouse_allChannels.m);
-%   expects OpenEphys_BaseAnalysis.m (or a variant) to have already been
+%   expects NNx_BaseAnalysis.m (or a variant) to have already been
 %   run for every animal/condition selected. For testing this script's
 %   own loop/wiring without touching real data, see
 %   ConditionalTrialRemove_callable_test.m (same folder) and the

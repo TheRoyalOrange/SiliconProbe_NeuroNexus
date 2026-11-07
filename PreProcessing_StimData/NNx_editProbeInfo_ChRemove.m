@@ -1,6 +1,7 @@
-% OpenEphys_editProbeInfo_ChRemove.m
+% NNx_editProbeInfo_ChRemove.m
 %
-% Description: Downstream, standalone utility to record which channels
+% Description: (formerly OpenEphys_editProbeInfo_ChRemove.m, renamed
+%   2026-11-07) Downstream, standalone utility to record which channels
 %   should be excluded from an animal's probe(s) (e.g. outside brain,
 %   broken). Loads that animal's existing ProbeInfo.mat, overwrites its
 %   .Ch_Remove field with a user-specified per-probe channel list
@@ -19,7 +20,7 @@
 %   ProbeInfo.mat (struct, loaded from disk) - struct containing several
 %     fields with information relevant to the experiment, recording
 %     details, and plotting of data. Expected to already exist (created
-%     by OpenEphys_BaseAnalysis.m or a variant). Has the following
+%     by NNx_BaseAnalysis.m or a variant). Has the following
 %     fields:
 %
 %       .Animal (string) - animal name used for file labels and figures
@@ -38,7 +39,7 @@
 %     .Ch_Remove (cell array, 1 x number of probes; each cell a vector
 %     of channel IDs) set to badchans.
 %
-% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the
+% Dependencies: Expects NNx_BaseAnalysis.m (or the
 %   _MixedTrials variant) to have already been run for this animal,
 %   producing the ProbeInfo.mat file this script loads and overwrites.
 %

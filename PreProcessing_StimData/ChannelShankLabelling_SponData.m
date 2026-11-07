@@ -61,14 +61,14 @@
 %     plot across shanks; bottom: heatmap of chActivityScore_Spon in the
 %     ProbeMaps layout (rows x shanks), Ch_Remove channels in black ('X').
 %
-% Dependencies: OpenEphys_BaseAnalysis.m (builds ProbeInfo),
-%   OpenEphys_editProbeInfo_ChRemove.m (Ch_Remove), oshkosh_detect_funct.m,
+% Dependencies: NNx_BaseAnalysis.m (builds ProbeInfo),
+%   NNx_editProbeInfo_ChRemove.m (Ch_Remove), oshkosh_detect_funct.m,
 %   oscillation_plotEvents.m, uipickfiles, Signal Processing Toolbox.
 %
 % NOTE (inferred data contracts, not verified):
 %   - ProbeInfo.ProbeMaps values are raw channel IDs, the same IDs as
 %     prbsnippets.chanals (both come from ProbeMaps via
-%     ProbeIds = reshape(ProbeMaps,[],1) in OpenEphys_BaseAnalysis).
+%     ProbeIds = reshape(ProbeMaps,[],1) in NNx_BaseAnalysis).
 %   - The probe's Ch_Remove channels are the only ProbeMaps channels missing
 %     from prbsnippets.chanals; any other missing channel would also plot
 %     black, but labelled with its ID instead of 'X'.

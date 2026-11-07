@@ -11,7 +11,7 @@
 %   already have this condition recorded. If no match exists, tells the
 %   user via a dialog, then lets them visually inspect LFP and
 %   spike-raster traces for one channel of an already-preprocessed
-%   animal/condition (output of OpenEphys_BaseAnalysis.m or a variant),
+%   animal/condition (output of NNx_BaseAnalysis.m or a variant),
 %   pick trials to exclude, and records that choice under the
 %   tr_conditional name. Does NOT touch tr_keep, and does NOT modify the
 %   LFP/spiking/TF/CSD result files beyond the tr_remove_conditional
@@ -39,7 +39,7 @@
 %     animal-prefixed. Internally combined with animal as
 %     full_filename = [animal '-' condition] (e.g.
 %     '20260423-p12-whisker'), matching the <animal>-<condition> prefix
-%     that OpenEphys_BaseAnalysis.m (or a variant) actually names the
+%     that NNx_BaseAnalysis.m (or a variant) actually names the
 %     LFP/spiking/figure files with.
 %   tr_conditional (string) - REQUIRED. Name of the trial-exclusion
 %     condition to look up/record for this file (e.g.
@@ -144,7 +144,7 @@
 %     slice of samples per chunk), so every chunk has to be touched
 %     regardless of which channel is requested; a timed comparison
 %     against a full load showed no measurable speed difference. Fixing
-%     that would require re-chunking OpenEphys_BaseAnalysis.m's save
+%     that would require re-chunking NNx_BaseAnalysis.m's save
 %     calls and re-saving existing files - out of scope here. Binning
 %     below operates on just this channel's slice. INFERRED DATA
 %     CONTRACT (pre-existing, not introduced by this change - the old
@@ -188,7 +188,7 @@
 %     <full_filename>-CSD_results.mat, and
 %     <full_filename>_TF_results.mat (note: no dash before
 %     "_TF_results", unlike the other three - matches how
-%     OpenEphys_BaseAnalysis.m actually names that file). Also logged to
+%     NNx_BaseAnalysis.m actually names that file). Also logged to
 %     the console.
 %   (side effect, not a return value) tr_conditional_master - the
 %     Name/Animal/Filename row for this call is added if not already
@@ -197,7 +197,7 @@
 %     including the "match found, skip" path. Also logged to the
 %     console.
 %
-% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the
+% Dependencies: Expects NNx_BaseAnalysis.m (or the
 %   _MixedTrials variant) to have already been run for this
 %   animal/condition, producing the LFP.mat and spiking_results.mat
 %   files this function reads, and <animal>-ProbeInfo.mat to already
@@ -253,7 +253,7 @@ if ~isnumeric(fs) || ~isscalar(fs)
          'default (30000) while still supplying later arguments.'], class(fs));
 end
 
-full_filename = [animal '-' condition]; % matches the <animal>-<condition> prefix OpenEphys_BaseAnalysis.m actually writes files under
+full_filename = [animal '-' condition]; % matches the <animal>-<condition> prefix NNx_BaseAnalysis.m actually writes files under
 spikingFile = fullfile([save_directory '\Spiking\' animal '\' full_filename '-spiking_results.mat']);
 
 %% make sure all four result files exist before anything else (the pick gets saved into all four, so no point picking otherwise)

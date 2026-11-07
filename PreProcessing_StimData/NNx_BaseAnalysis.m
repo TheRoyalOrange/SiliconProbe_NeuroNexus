@@ -1,7 +1,8 @@
-% OpenEphys_BaseAnalysis.m
+% NNx_BaseAnalysis.m
 %
-% Description: (formerly OpenEphys_BaseAnalysis_Bundled.m; the old
-%   single-recording OpenEphys_BaseAnalysis.m was removed 2026-11-07). Loops
+% Description: (formerly OpenEphys_BaseAnalysis_Bundled.m, then
+%   OpenEphys_BaseAnalysis.m; renamed to NNx_ 2026-11-07. The old
+%   single-recording OpenEphys_BaseAnalysis.m was removed the same day). Loops
 %   over some or all of one animal's OpenEphys recordings (one per
 %   stimulus condition in stim_all) and, per recording, loads raw data,
 %   detects stimulus onsets from the TTL channel, epochs peristimulus
@@ -56,7 +57,7 @@
 %                    .TTLch (int) - channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
 %                    .poi (int vector) - which probes in the recording are to be analyzed?
 %                    .ProbeIds (cell array, 1 x probenum) - channel IDs within each probe (starts at 1 : number of channels on probe)
-%                    .Ch_Remove (cell array) - empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken)
+%                    .Ch_Remove (cell array) - empty field to be modified later using NNx_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken)
 %
 %     [Note: all following output files have the prefix animal-stim-]
 %     LFP.mat - mat file containing: 
@@ -168,7 +169,7 @@
 %
 % Dependencies: None from this pipeline — this is the entry point
 %   for the first script run per animal (PreProcessing_StimData stage),
-%   for one or many recordings (OpenEphys_BaseAnalysis_MixedTrials.m is the
+%   for one or many recordings (NNx_BaseAnalysis_MixedTrials.m is the
 %   version for interleaved conditions). Requires OpenEphys MATLAB tools on
 %   the path (uipickfiles, Session/continuous data readers) plus the
 %   CSDallshank and slanCM helper functions.
@@ -386,7 +387,7 @@ if Cogito_ProbeSum == 0 && isfile(probeinfo_file)
     old_probeinfo = old_probeinfo.ProbeInfo;
     whats_there = {}; %what's filled in that would be lost
 
-    %removed channels (from OpenEphys_editProbeInfo_ChRemove.m)
+    %removed channels (from NNx_editProbeInfo_ChRemove.m)
     if isfield(old_probeinfo,'Ch_Remove')
         for prb = 1:numel(old_probeinfo.Ch_Remove)
             if any(old_probeinfo.Ch_Remove{prb}(:) ~= 0)
@@ -552,7 +553,7 @@ ProbeInfo.Chans = chans; %number of recording channels
 ProbeInfo.TTLch = TTLch; %channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
 ProbeInfo.poi = poi; %which probes in the recording are to be analyzed?
 ProbeInfo.ProbeIds = probeids; %channel IDs within each probe (starts at 1 : number of channels on probe)
-ProbeInfo.Ch_Remove = {}; %empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken) 
+ProbeInfo.Ch_Remove = {}; %empty field to be modified later using NNx_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken) 
 
 
 % SAVE PROBE INFO

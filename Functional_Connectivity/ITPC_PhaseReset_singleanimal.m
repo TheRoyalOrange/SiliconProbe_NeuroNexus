@@ -14,7 +14,7 @@
 %        analysed channel
 %     4 / 4b. OFF: per-trial inverse CSD via CSD_flex.m and its plot
 %     5. 0.5-150 Hz bandpass (lfp_bp_hz) then complex Morlet wavelet on
-%        lfp_ref (method from the OpenEphys_BaseAnalysis.m TF
+%        lfp_ref (method from the NNx_BaseAnalysis.m TF
 %        section, cycles range_cycles, max(abs()) normalisation): phase per
 %        channel x frequency x time x trial; power as trial means (raw and
 %        per-trial-baseline dB). (The old CSD + LFP loop version is OFF.)
@@ -53,7 +53,7 @@
 %       raw channel IDs; columns = shanks. INFERRED: rows are equally
 %       spaced contacts in physical order along the shank; which end row 1
 %       is (superficial or deep) is not stated anywhere.
-%   <animal>-<stim>-LFP.mat files from OpenEphys_BaseAnalysis.m,
+%   <animal>-<stim>-LFP.mat files from NNx_BaseAnalysis.m,
 %     chosen per condition with uipickfiles:
 %     stim_lfp_stimchunks (double, trials x 15000 x channels) - LFP in
 %       microvolts at 1 kHz. Epoch = stim-5000 : stim+9999 samples, so
@@ -154,8 +154,8 @@
 %     counts and removed channels per probe (indexed by probe), per-file
 %     trial table (report.files), phase_lfp size (report.phase_gb), notes
 %
-% Dependencies: OpenEphys_BaseAnalysis.m (LFP files, ProbeInfo),
-%   OpenEphys_editProbeInfo_ChRemove.m (Ch_Remove), uipickfiles.m,
+% Dependencies: NNx_BaseAnalysis.m (LFP files, ProbeInfo),
+%   NNx_editProbeInfo_ChRemove.m (Ch_Remove), uipickfiles.m,
 %   Signal Processing Toolbox (bandpass); optional
 %   ConditionalTrialRemove_callable.m (tr_remove_conditional).
 %   OFF sections also need CSD_flex.m (this folder) and slanCM.m.
@@ -177,7 +177,7 @@ onset_idx = 5001; %stimulus onset sample in stim_lfp_stimchunks
 
 tr_conditional_names = {}; %e.g. {'whisker_twitch_artifact'}; extra trial exclusions
 
-%inverse CSD (CSD_flex.m; defaults = the CSDallshank call in OpenEphys_BaseAnalysis.m)
+%inverse CSD (CSD_flex.m; defaults = the CSDallshank call in NNx_BaseAnalysis.m)
 %CSD is off for now (LFP only), so these are parked too
 %csd_spacing_um = 100; %distance between adjacent ProbeMaps rows, um
 %csd_radius_um = 300; %lateral radius of the active column of tissue, um (not the contact size: contacts are 177 um^2 in area, NeuroNexus catalog A8x8-Edge-5mm-100-200-177)
@@ -187,7 +187,7 @@ tr_conditional_names = {}; %e.g. {'whisker_twitch_artifact'}; extra trial exclus
 %broadband clean-up before the wavelet (the LFP files are only downsampled, never filtered)
 lfp_bp_hz = [0.5 150]; %Hz, bandpass edges
 
-%wavelet (method from the OpenEphys_BaseAnalysis.m TF section)
+%wavelet (method from the NNx_BaseAnalysis.m TF section)
 %frex = 2:1:80; %old range, now down to 1 Hz for the 1-80 Hz ITPC plot
 frex = 1:1:80; %Hz, integer steps so frequency index is unambiguous
 range_cycles = [3 5]; %wavelet cycles at lowest/highest frequency (BaseAnalysis uses [6 10]; fewer cycles = better time resolution)
@@ -388,7 +388,7 @@ end
 %% 4b Data Visualization: CSD plot (OFF FOR NOW)
 %off along with the rest of the CSD stuff
 %{
-%trial-mean CSD per shank, layout borrowed from the OpenEphys_BaseAnalysis.m CSD plot.
+%trial-mean CSD per shank, layout borrowed from the NNx_BaseAnalysis.m CSD plot.
 %Removed (Ch_Remove) rows stay empty at their true depth (dashed grey line).
 csdplot_ms = [-50 500]; %plot window, ms re: stim
 csdplot_overlay = 'LFP'; %'LFP', 'CSD' or 'none': normalised trial-mean trace drawn on each row
@@ -472,7 +472,7 @@ if report.phase_gb > max_phase_gb
     error('phase_ref + phase_lfp would need %.1f GB (> max_phase_gb = %g). Narrow frex or time_ms, or raise max_phase_gb.', report.phase_gb, max_phase_gb);
 end
 
-%wavelet parameters (as in OpenEphys_BaseAnalysis.m TF section)
+%wavelet parameters (as in NNx_BaseAnalysis.m TF section)
 s = logspace(log10(range_cycles(1)), log10(range_cycles(end)), nfrex) ./ (2*pi*frex); %Gaussian width, s
 wavtime = -2:1/1000:2;
 half_wave = (length(wavtime)-1)/2;
@@ -538,7 +538,7 @@ clear waveletX wavelet wX dataX as pw dat
 %Now beginning the time-frequency section (LFP only)
 
 %% 5 Data PreProcessing: bandpass + Morlet wavelet on the LFP (phase per trial, power)
-%same wavelet method as the OpenEphys_BaseAnalysis.m TF section (logspace cycles, wavtime -2:2,
+%same wavelet method as the NNx_BaseAnalysis.m TF section (logspace cycles, wavtime -2:2,
 %all trials of a channel convolved in one go), with range_cycles [3 5] and a padded segment
 disp('TF: Bandpassing and wavelet-ing the LFP, sit tight')
 tic
@@ -556,7 +556,7 @@ if report.phase_gb > max_phase_gb
     error('phase_lfp would need %.1f GB (> max_phase_gb = %g). Narrow frex or time_ms, or raise max_phase_gb.', report.phase_gb, max_phase_gb);
 end
 
-%wavelet parameters (as in OpenEphys_BaseAnalysis.m TF section)
+%wavelet parameters (as in NNx_BaseAnalysis.m TF section)
 s = logspace(log10(range_cycles(1)), log10(range_cycles(end)), nfrex) ./ (2*pi*frex); %Gaussian width, s
 wavtime = -2:1/1000:2;
 half_wave = (length(wavtime)-1)/2;
@@ -729,7 +729,7 @@ end
 %switched off 2026-11-02: these were for testing; sections 9-11 below are the plots for now. Kept for later
 %{
 %one figure per map, one panel per channel at its ProbeMaps (row, shank) position.
-%Style from the OpenEphys_BaseAnalysis.m TF plot. The older scripts build the grid
+%Style from the NNx_BaseAnalysis.m TF plot. The older scripts build the grid
 %from the transposed map, which only matches square (8x8) maps; this uses rows x shanks directly.
 tfplot_ms = [-50 200]; %time window, ms re: stim
 tfplot_hz = [frex(1) frex(end)]; %frequency range, Hz

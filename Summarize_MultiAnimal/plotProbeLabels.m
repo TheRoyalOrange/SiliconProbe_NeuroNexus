@@ -35,8 +35,8 @@
 %     layout per label); empty if the probe has no labels
 %
 % Dependencies: ChannelShankLabelling_SponData.m / ChannelShankLabelling_StimData.m
-%   (write ProbeInfo.ChanLabels / ShankLabels); OpenEphys_BaseAnalysis*.m (ProbeMaps);
-%   OpenEphys_editProbeInfo_ChRemove.m (Ch_Remove).
+%   (write ProbeInfo.ChanLabels / ShankLabels); NNx_BaseAnalysis*.m (ProbeMaps);
+%   NNx_editProbeInfo_ChRemove.m (Ch_Remove).
 
 function figs = plotProbeLabels(ProbeInfo, prb, labelnames, parent, tiles)
 

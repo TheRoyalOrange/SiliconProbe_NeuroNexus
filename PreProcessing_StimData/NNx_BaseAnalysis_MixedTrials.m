@@ -1,12 +1,13 @@
-% OpenEphys_BaseAnalysis_MixedTrials.m
+% NNx_BaseAnalysis_MixedTrials.m
 %
-% Description: Mixed-trials variant of OpenEphys_BaseAnalysis.m for a
+% Description: (formerly OpenEphys_BaseAnalysis_MixedTrials.m, renamed
+%   2026-11-07) Mixed-trials variant of NNx_BaseAnalysis.m for a
 %   single continuous OpenEphys recording that contains multiple
 %   interleaved stimulus/trial conditions (rather than one condition per
 %   recording). Filters stimulus onset times down to only the trials
 %   belonging to the user-chosen condition (stim_times(stim_Index ==
 %   stim_num)), then runs the same pipeline as
-%   OpenEphys_BaseAnalysis.m: loads raw data, epochs peristimulus data
+%   NNx_BaseAnalysis.m: loads raw data, epochs peristimulus data
 %   for the selected condition, and (per user toggles) computes LFP,
 %   CSD, time-frequency (Morlet wavelet), and MUA/spiking results, with
 %   optional interactive bad-channel/trial removal and TF/spike-
@@ -60,7 +61,7 @@
 %                    .TTLch (int) - channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
 %                    .poi (int vector) - which probes in the recording are to be analyzed?
 %                    .ProbeIds (cell array, 1 x probenum) - channel IDs within each probe (starts at 1 : number of channels on probe)
-%                    .Ch_Remove (cell array) - empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken)
+%                    .Ch_Remove (cell array) - empty field to be modified later using NNx_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken)
 %
 %     [Note: all following output files have the prefix animal-stim-]
 %     LFP.mat - mat file containing: 
@@ -185,7 +186,7 @@
 % Dependencies: None from this pipeline — this is the first script run
 %   per recording (PreProcessing_StimData stage), for recordings with
 %   multiple interleaved stimulus conditions specifically; it is the
-%   mixed-trials counterpart of OpenEphys_BaseAnalysis.m (use that one
+%   mixed-trials counterpart of NNx_BaseAnalysis.m (use that one
 %   for a recording with a single stimulus condition). Requires
 %   OpenEphys MATLAB tools on the path (uipickfiles, Session/continuous
 %   data readers) plus the CSDallshank and slanCM helper functions.
@@ -401,7 +402,7 @@ if Cogito_ProbeSum == 0 && isfile(probeinfo_file)
     old_probeinfo = old_probeinfo.ProbeInfo;
     whats_there = {}; %what's filled in that would be lost
 
-    %removed channels (from OpenEphys_editProbeInfo_ChRemove.m)
+    %removed channels (from NNx_editProbeInfo_ChRemove.m)
     if isfield(old_probeinfo,'Ch_Remove')
         for prb = 1:numel(old_probeinfo.Ch_Remove)
             if any(old_probeinfo.Ch_Remove{prb}(:) ~= 0)
@@ -509,7 +510,7 @@ ProbeInfo.Chans = chans; %number of recording channels
 ProbeInfo.TTLch = TTLch; %channel ID of TTL trigger channel. should be chans+1 unless something wierd in the GUI during recording
 ProbeInfo.poi = poi; %which probes in the recording are to be analyzed?
 ProbeInfo.ProbeIds = probeids; %channel IDs within each probe (starts at 1 : number of channels on probe)
-ProbeInfo.Ch_Remove = {}; %empty field to be modified later using OpenEphys_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken) 
+ProbeInfo.Ch_Remove = {}; %empty field to be modified later using NNx_editProbeInfo_ChRemove in case some channels are not useful (e.g. outside brain/broken) 
 
 
 % SAVE PROBE INFO

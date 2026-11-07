@@ -13,7 +13,7 @@ function oscillation_plotEvents(ProbeInfo, oscillations, probeSnippets)
 %   (1) Shank (discrete/qualitative colormap: lines) -
 %   every channel found in the same column of the same probe's
 %   ProbeInfo.ProbeMaps entry gets the same color (columns are shanks per
-%   ProbeInfo's own convention - see OpenEphys_BaseAnalysis.m).
+%   ProbeInfo's own convention - see NNx_BaseAnalysis.m).
 %   (2) Depth (continuous colormap: copper) - within each shank, channels
 %   are colored by their position along the shank (physical row order in
 %   ProbeInfo.ProbeMaps, after excluding that probe's own

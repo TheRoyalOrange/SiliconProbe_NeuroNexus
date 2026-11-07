@@ -57,8 +57,8 @@
 %   Figures - one "all events" figure per recording, one summary figure per
 %     probe, one scrollable viewer
 %
-% Dependencies: OpenEphys_BaseAnalysis.m (builds ProbeInfo),
-%   OpenEphys_editProbeInfo_ChRemove.m (Ch_Remove), oshkosh_detect_funct.m,
+% Dependencies: NNx_BaseAnalysis.m (builds ProbeInfo),
+%   NNx_editProbeInfo_ChRemove.m (Ch_Remove), oshkosh_detect_funct.m,
 %   oscillation_plotEvents.m, uipickfiles, Signal Processing Toolbox.
 %
 % NOTE (inferred data contracts, not verified on real recordings):

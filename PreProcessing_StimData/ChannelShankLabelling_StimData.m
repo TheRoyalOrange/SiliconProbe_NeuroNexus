@@ -28,7 +28,7 @@
 %         (reshape(ProbeMaps{p},[],1))
 %       .Ch_Remove (cell, 1 x probenum) - raw channel IDs to exclude per probe
 %   stimdata_directory (cell of strings, picked via uipickfiles) - processed
-%     LFP .mat files (from OpenEphys_BaseAnalysis), each containing:
+%     LFP .mat files (from NNx_BaseAnalysis), each containing:
 %       stim_lfp_stimchunks (double, trials x samples x channels) - peri-
 %         stimulus LFP, 1 kHz, microvolts; 3rd dim indexed by raw channel ID
 %   labelname (string, typed in via inputdlg prompt) - struct field name
@@ -62,13 +62,13 @@
 %   shnkActivityScore_Stim (cell, 1 x length(probes)) - each 1 x Nshanks
 %     double: mean channel score per shank (ProbeMaps column) of probes(p)
 %
-% Dependencies: OpenEphys_BaseAnalysis.m (builds ProbeInfo and the
-%   LFP files with stim_lfp_stimchunks), OpenEphys_editProbeInfo_ChRemove.m
+% Dependencies: NNx_BaseAnalysis.m (builds ProbeInfo and the
+%   LFP files with stim_lfp_stimchunks), NNx_editProbeInfo_ChRemove.m
 %   (Ch_Remove), uipickfiles.
 %
 % NOTE (inferred data contracts, not verified):
 %   - Hardcodes 1 kHz and stimulus onset at ~sample 5000, i.e. pre_second = 5
-%     in OpenEphys_BaseAnalysis (onset is actually sample pre+1 = 5001), and
+%     in NNx_BaseAnalysis (onset is actually sample pre+1 = 5001), and
 %     epochs at least 8000 samples long.
 %   - Every picked LFP file must have the same epoch length and channel
 %     layout (trials are concatenated along dim 1).
