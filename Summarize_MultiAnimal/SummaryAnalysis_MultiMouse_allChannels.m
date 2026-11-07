@@ -3,10 +3,10 @@
 % Description: Combined all-channels summary of LFP, MUA and time-frequency (TF)
 %   responses across mice and conditions, in one long-format table (one row per
 %   good trial x kept channel, all measures side by side) written to a csv for R.
-%   Merges SummaryAnalysis_MultiMouseLFP_allChannels.m,
+%   Merges the former single-type scripts SummaryAnalysis_MultiMouseLFP_allChannels.m,
 %   SummaryAnalysis_MultiMouseMUA_modifiedforallChannels.m and
-%   SummaryAnalysis_MultiMouseTF_allChannels.m (which remain available for one data
-%   type at a time): same start and end sections, one calculation block per data
+%   SummaryAnalysis_MultiMouseTF_allChannels.m (removed 2026-11-07, still in git
+%   history): same start and end sections, one calculation block per data
 %   type in the middle. All three types are always computed.
 %   The user lists the mice, the region per mouse, the condition names and
 %   (optionally) trial labels, picks shank activity scores and then only the LFP
@@ -166,7 +166,7 @@ condis = {'W','L_8','LW_8','W_TTX','L_8_TTX','LW_8_TTX'}; %list conditions to be
 tr_conditional_use = {}; %e.g. {"whisker_twitch_artifact"}
 
 %data types to include - not used yet: all three are always computed
-%(the single-type scripts SummaryAnalysis_MultiMouseLFP/MUA/TF_allChannels.m cover other cases)
+%(the single-type scripts SummaryAnalysis_MultiMouseLFP/MUA/TF_allChannels.m used to cover other cases; removed 2026-11-07, still in git history)
 %do_LFP = true;
 %do_MUA = true;
 %do_TF = true;

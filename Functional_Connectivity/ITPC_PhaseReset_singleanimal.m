@@ -733,7 +733,7 @@ end
 %from the transposed map, which only matches square (8x8) maps; this uses rows x shanks directly.
 tfplot_ms = [-50 200]; %time window, ms re: stim
 tfplot_hz = [frex(1) frex(end)]; %frequency range, Hz
-itpc_clim = [0 0.4]; %ITPC colour limits (as in Plotting_ITPC_probe_singleanimal.m)
+itpc_clim = [0 0.4]; %ITPC colour limits (as in the old Plotting_ITPC_probe_singleanimal.m, removed 2026-11-07)
 powdB_clim = []; %dB colour limits; [] = symmetric +/- max |dB| over all plotted panels (CSD and LFP)
 rayZ_clim = []; %Rayleigh Z colour limits; [] = [0, max Z over all plotted panels (CSD and LFP)]
 itpcdiff_clim = []; %CSD - LFP ITPC colour limits; [] = symmetric +/- max |difference|

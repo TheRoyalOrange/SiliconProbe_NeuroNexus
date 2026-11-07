@@ -80,7 +80,7 @@
 %
 % Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable (including its section
 %   adding Chan_Shank / Chan_Depth); ProbeInfo.ShankLabels from ChannelShankLabelling_SponData.m /
-%   ChannelShank_activitylabelling.m. Same alignment as plotLWIntensityCompare_multianimal.m.
+%   ChannelShankLabelling_StimData.m. Same alignment as plotLWIntensityCompare_multianimal.m.
 %   MATLAB R2020b+ (tiledlayout legend tile); Statistics and Machine Learning Toolbox (quantile,
 %   fitlme, fitlm).
 

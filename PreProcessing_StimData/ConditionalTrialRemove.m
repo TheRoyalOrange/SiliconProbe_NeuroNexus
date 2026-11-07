@@ -107,7 +107,7 @@
 %
 % Dependencies: ConditionalTrialRemove_callable.m (same folder);
 %   uipickfiles (must be on the MATLAB path - already used elsewhere in
-%   this repo, e.g. Summarize_MultiAnimal\SummaryAnalysis_MultiMouseTF.m);
+%   this repo, e.g. Summarize_MultiAnimal\SummaryAnalysis_MultiMouse_allChannels.m);
 %   expects OpenEphys_BaseAnalysis.m (or a variant) to have already been
 %   run for every animal/condition selected. For testing this script's
 %   own loop/wiring without touching real data, see

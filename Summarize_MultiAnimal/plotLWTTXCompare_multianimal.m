@@ -122,7 +122,7 @@
 %
 % Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable, including its
 %   separate section that adds Chan_Shank / Chan_Depth / ShankRank_<score>; ProbeInfo labels
-%   from ChannelShankLabelling_SponData.m / ChannelShank_activitylabelling.m. Same layout
+%   from ChannelShankLabelling_SponData.m / ChannelShankLabelling_StimData.m. Same layout
 %   ideas and helpers as plotLWIntensityCompare_multianimal.m; heatmaps and statistics as
 %   plotRankedShankRows.m. MATLAB R2020b+ (nested tiledlayout); Statistics and Machine
 %   Learning Toolbox (ranksum, ttest).
