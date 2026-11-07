@@ -60,7 +60,7 @@
 %       upstream], 1 kHz, not filtered upstream
 %     tr_keep (double, 1 x nTrials) - trial numbers (indices into dim 1)
 %     tr_remove (0/1, 1 x nTrials) - mask over tr_keep (updated format from
-%       ConditionalTrialRemove(_callable).m); only tr_keep(tr_remove == 0) are used. Old format
+%       NNx_TrialRemove_Conditional(_callable).m); only tr_keep(tr_remove == 0) are used. Old format
 %       (different length, or empty) stops the script with an error
 %   <probeinfo_dir>\<animal>-ProbeInfo.mat, ProbeInfo fields:
 %     .Areas (cell of char, 1 x probes) - region per probe; region picks the probe
@@ -73,7 +73,7 @@
 %     - channel index (dim 3) of the data = raw channel ID (true when ChanIds = 1:Chans)
 %     - Ch_Remove is indexed by probe number
 %     - ProbeMaps rows are equally spaced contacts in physical order along the shank (from CSD_flex.m)
-%   Not applied: tr_remove_conditional (extra exclusions from ConditionalTrialRemove_callable.m)
+%   Not applied: tr_remove_conditional (extra exclusions from NNx_TrialRemove_Conditional_callable.m)
 %
 % Outputs (workspace; nothing saved unless plotsave / save_csv):
 %   signames (string, 1 x signals) - the signals that were run, order of dim 3 of the cells below
@@ -147,7 +147,7 @@
 %   jointexpl (cell, animals x pairs x signals) - (double, PCs x 1) percent variance per shared PC
 %   csv (save_csv = 1) - stats_win, you'll get a file name box
 %
-% Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); ConditionalTrialRemove(_callable).m
+% Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); NNx_TrialRemove_Conditional(_callable).m
 %   (tr_remove mask format); CSD_flex.m (Functional_Connectivity folder, CSD signals); uipickfiles.m;
 %   Statistics Toolbox (pca, signrank, fitlme); Signal Processing Toolbox (butter, zp2sos, filtfilt,
 %   envelope); MATLAB R2019b+ (tiledlayout).
@@ -439,7 +439,7 @@ for con = 1:ncond
         %which trials are good? tr_remove has to be the 0/1 mask over tr_keep
         d = load(fpath,'tr_keep','tr_remove');
         if isfield(d,'tr_remove') == false || numel(d.tr_remove) ~= numel(d.tr_keep)
-            error([fname ': tr_remove is not a 0/1 mask over tr_keep (old format). Run the file through ConditionalTrialRemove first'])
+            error([fname ': tr_remove is not a 0/1 mask over tr_keep (old format). Run the file through NNx_TrialRemove_Conditional first'])
         end
         tr_keep = d.tr_keep(:)';
         trs = tr_keep(d.tr_remove(:)' == 0); %good trials

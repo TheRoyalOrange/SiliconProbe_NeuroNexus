@@ -1,7 +1,8 @@
-% ConditionalTrialRemove.m
+% NNx_TrialRemove_Conditional.m
 %
-% Description: Standalone driver script that batch-applies
-%   ConditionalTrialRemove_callable.m across a manually chosen set of
+% Description: (formerly ConditionalTrialRemove.m, renamed 2026-11-07)
+%   Standalone driver script that batch-applies
+%   NNx_TrialRemove_Conditional_callable.m across a manually chosen set of
 %   animals and conditions, under a single tr_conditional name. Meant to
 %   be run start-to-finish (F5) rather than section-by-section: it
 %   blocks on its own dialogs (confirm tr_conditional, confirm the
@@ -14,7 +15,7 @@
 %   After the user confirms tr_conditional, checks whether that name
 %   already exists in the master index and, if so, warns and asks
 %   whether to continue (since re-running the same name on files it has
-%   already been applied to is a no-op - ConditionalTrialRemove_callable.m
+%   already been applied to is a no-op - NNx_TrialRemove_Conditional_callable.m
 %   skips any animal/filename pair that already has a recorded trial set
 %   for that name, and there is currently no way to edit an
 %   already-recorded assignment). Then, before any files are picked,
@@ -30,7 +31,7 @@
 %   user can pick which condition files to run tr_conditional against;
 %   the chosen files are parsed into condition names (stripping the
 %   <animal>- prefix and -LFP suffix) and handed to
-%   ConditionalTrialRemove_callable.m one at a time. For each file that
+%   NNx_TrialRemove_Conditional_callable.m one at a time. For each file that
 %   still needs trials picked, the callable has the user pick a channel off
 %   the animal's probe activity labels (ProbeInfo.ChanLabels/ShankLabels)
 %   if it has any - see that file's header. If the user hits "Cancel. I'll
@@ -48,28 +49,28 @@
 %   tr_conditional (string) - PROVIDED BY USER, manually typed rather
 %     than selected from a list, to reduce the chance of silently
 %     reusing/mistyping an existing name. Passed straight through to
-%     ConditionalTrialRemove_callable.m - see its header for the naming
+%     NNx_TrialRemove_Conditional_callable.m - see its header for the naming
 %     convention (e.g. 'whisker_twitch_artifact').
 %   animal_inc (cell array of strings) - PROVIDED BY USER. Each entry is
 %     an animal name matching a folder under
 %     <save_directory>\LFP\<animal>, i.e. the same animal argument
-%     ConditionalTrialRemove_callable.m expects.
+%     NNx_TrialRemove_Conditional_callable.m expects.
 %   fs (int) - PROVIDED BY USER. Sampling rate of the original
-%     recording, in Hz. Forwarded to ConditionalTrialRemove_callable.m.
+%     recording, in Hz. Forwarded to NNx_TrialRemove_Conditional_callable.m.
 %     INFERRED DATA CONTRACT: not requested explicitly, but added since
-%     ConditionalTrialRemove_callable.m takes it as an input (defaults to
+%     NNx_TrialRemove_Conditional_callable.m takes it as an input (defaults to
 %     30000, matching that function's own default, if left as-is).
 %   save_directory (string) - PROVIDED BY USER. Base path containing the
 %     LFP/Spiking/ProbeInfo/tr_conditional_master.mat this script and
-%     ConditionalTrialRemove_callable.m read from. INFERRED DATA
+%     NNx_TrialRemove_Conditional_callable.m read from. INFERRED DATA
 %     CONTRACT: not requested explicitly, but added since
-%     ConditionalTrialRemove_callable.m takes it as an input; defaults to
+%     NNx_TrialRemove_Conditional_callable.m takes it as an input; defaults to
 %     'E:\Roy\Processed Silicon Probe Data', matching that function's own
 %     default.
 %   master_filename (string) - PROVIDED BY USER, set just below the main
 %     USER-SET VARIABLES block (not inside it) right before its first
 %     use. Filename (not a full path) of the master tracking file within
-%     save_directory, forwarded to ConditionalTrialRemove_callable.m and
+%     save_directory, forwarded to NNx_TrialRemove_Conditional_callable.m and
 %     used by this script's own master-list display/existence-check
 %     below. Normally 'tr_conditional_master.mat' (the real master
 %     index) - for a test run, temporarily change it to a different
@@ -81,7 +82,7 @@
 %     <animal>-<condition>-LFP.mat (matching how
 %     NNx_BaseAnalysis.m, or a variant, actually names LFP.mat
 %     output) - the condition name fed to
-%     ConditionalTrialRemove_callable.m is recovered by stripping the
+%     NNx_TrialRemove_Conditional_callable.m is recovered by stripping the
 %     <animal>- prefix and -LFP suffix back off the picked filename.
 %
 % Outputs:
@@ -100,19 +101,20 @@
 %     trials were picked but whose CSD and/or TF file was missing, so
 %     tr_remove_conditional wasn't saved there (callable's missingsaves
 %     output). Listed/kept the same way as skipped_files.
-%   (side effect, via ConditionalTrialRemove_callable.m) tr_remove_conditional
+%   (side effect, via NNx_TrialRemove_Conditional_callable.m) tr_remove_conditional
 %     rows written into each selected animal/condition's LFP/spiking/
 %     CSD/TF result files, and <save_directory>\<master_filename> updated
-%     - see ConditionalTrialRemove_callable.m's own header for details.
+%     - see NNx_TrialRemove_Conditional_callable.m's own header for details.
 %
-% Dependencies: ConditionalTrialRemove_callable.m (same folder);
+% Dependencies: NNx_TrialRemove_Conditional_callable.m (same folder);
 %   uipickfiles (must be on the MATLAB path - already used elsewhere in
 %   this repo, e.g. Summarize_MultiAnimal\SummaryAnalysis_MultiMouse_allChannels.m);
 %   expects NNx_BaseAnalysis.m (or a variant) to have already been
 %   run for every animal/condition selected. For testing this script's
 %   own loop/wiring without touching real data, see
-%   ConditionalTrialRemove_callable_test.m (same folder) and the
-%   commented-out swap in the loop below.
+%   ConditionalTrialRemove_callable_test.m (removed from the repo
+%   2026-09-19, still in git history) and the commented-out swap in the
+%   loop below.
 
 %% ============ USER-SET VARIABLES - fill these in by hand ============
 tr_conditional = 'ActiveV1';   % name of the trial-exclusion condition to apply, e.g. 'whisker_twitch_artifact'
@@ -129,10 +131,10 @@ displayTrConditionalMaster(save_directory, master_filename);
 
 %% now validate that the user actually filled in the required variables above
 if isempty(tr_conditional) || ~(ischar(tr_conditional) || isstring(tr_conditional))
-    error('ConditionalTrialRemove:EmptyConditional', 'Fill in tr_conditional before running.');
+    error('NNx_TrialRemove_Conditional:EmptyConditional', 'Fill in tr_conditional before running.');
 end
 if isempty(animal_inc) || ~iscell(animal_inc) || any(cellfun(@isempty, animal_inc))
-    error('ConditionalTrialRemove:EmptyAnimalInc', 'Fill in animal_inc (cell array of animal names) before running.');
+    error('NNx_TrialRemove_Conditional:EmptyAnimalInc', 'Fill in animal_inc (cell array of animal names) before running.');
 end
 
 %% confirm tr_conditional with the user
@@ -152,7 +154,7 @@ if isfile(masterFile)
         n = sum(existingRows);
         existMsg = sprintf(['tr_conditional ''%s'' already exists in %s ' ...
             '(%d animal/filename pair(s) already recorded).\n\nNote: already-recorded pairs cannot ' ...
-            'be re-edited - ConditionalTrialRemove_callable.m will just skip them.\n\nContinue anyway?'], ...
+            'be re-edited - NNx_TrialRemove_Conditional_callable.m will just skip them.\n\nContinue anyway?'], ...
             tr_conditional, master_filename, n);
         answer = nonModalConfirm(existMsg, 'tr_conditional already exists');
         if ~strcmp(answer, 'Yes')
@@ -203,7 +205,7 @@ if ~isempty(nolabel_animals) || ~isempty(noprobeinfo_animals)
     end
     labelAnswer = questdlg(labelMsg, 'Missing activity labels', 'Fuck it, we''ll do it live', 'Cancel. I''ll be back', 'Cancel. I''ll be back');
     if ~strcmp(labelAnswer, 'Fuck it, we''ll do it live') %cancel button, or closed the box
-        disp('ConditionalTrialRemove: run cancelled before starting - go make those labels. See ya later.');
+        disp('NNx_TrialRemove_Conditional: run cancelled before starting - go make those labels. See ya later.');
         return
     end
 end
@@ -214,7 +216,7 @@ for a = 1:numel(animal_inc)
     animal = animal_inc{a};
     animalLFPdir = fullfile(save_directory, 'LFP', animal);
     if ~isfolder(animalLFPdir)
-        warning('ConditionalTrialRemove:AnimalFolderNotFound', ...
+        warning('NNx_TrialRemove_Conditional:AnimalFolderNotFound', ...
             'LFP folder not found for animal ''%s'': %s - skipping.', animal, animalLFPdir);
         animal_condition_files{a} = {};
         continue
@@ -224,7 +226,7 @@ for a = 1:numel(animal_inc)
         sprintf('Choose ''%s'' condition file(s) for %s', tr_conditional, animal));
 
     if ~iscell(picked) % uipickfiles returns 0 if the user cancels
-        warning('ConditionalTrialRemove:NoFilesPicked', ...
+        warning('NNx_TrialRemove_Conditional:NoFilesPicked', ...
             'No files picked for animal ''%s'' - skipping.', animal);
         animal_condition_files{a} = {};
         continue
@@ -238,7 +240,7 @@ for a = 1:numel(animal_inc)
         if startsWith(base, prefix) && endsWith(base, suffix)
             conditions{f} = base(numel(prefix)+1 : end-numel(suffix));
         else
-            warning('ConditionalTrialRemove:UnexpectedFilename', ...
+            warning('NNx_TrialRemove_Conditional:UnexpectedFilename', ...
                 ['Picked file ''%s'' does not match the expected <animal>-<condition>-LFP.mat ' ...
                  'pattern for animal ''%s'' - skipping this file.'], base, animal);
             conditions{f} = '';
@@ -247,21 +249,21 @@ for a = 1:numel(animal_inc)
     animal_condition_files{a} = conditions(~cellfun(@isempty, conditions));
 end
 
-%% run ConditionalTrialRemove_callable.m for every animal/condition selected above
+%% run NNx_TrialRemove_Conditional_callable.m for every animal/condition selected above
 skipped_files = {}; %<animal>-<condition> of every file skipped for a missing spiking/LFP file, for the post-run report
 nosave_files = {}; %<animal>-<condition>: <missing file names> - trials picked, but not saved into those missing CSD/TF files
 for a = 1:numel(animal_inc)
     animal = animal_inc{a};
     conditions = animal_condition_files{a};
-    ProbeInfo = []; % reloaded once per animal (via ConditionalTrialRemove_callable.m's own optional ProbeInfo input/output), then reused across this animal's conditions instead of re-loading per condition
+    ProbeInfo = []; % reloaded once per animal (via NNx_TrialRemove_Conditional_callable.m's own optional ProbeInfo input/output), then reused across this animal's conditions instead of re-loading per condition
     for c = 1:numel(conditions)
         % TESTING: comment out the real call below and uncomment the _test call to dry-run this
         % script's loop/wiring without touching any real LFP/Spiking/CSD/TF result files - see
-        % ConditionalTrialRemove_callable_test.m's header for what it does instead.
+        % ConditionalTrialRemove_callable_test.m's header for what it does instead (removed 2026-09-19, in git history).
         % do_it_live = 1 for animals with no activity labels: you already said "do it live" in the pre-run check,
         % so the callable skips its own no-labels dialog and goes straight to the LFP figs + typed channel number
         do_it_live = ~animal_haslabels(a);
-        [ProbeInfo, runCancelled, fileSkipped, missingsaves] = ConditionalTrialRemove_callable(animal, conditions{c}, tr_conditional, fs, ProbeInfo, save_directory, master_filename, do_it_live);
+        [ProbeInfo, runCancelled, fileSkipped, missingsaves] = NNx_TrialRemove_Conditional_callable(animal, conditions{c}, tr_conditional, fs, ProbeInfo, save_directory, master_filename, do_it_live);
         % ProbeInfo = ConditionalTrialRemove_callable_test(animal, conditions{c}, tr_conditional, fs, ProbeInfo, save_directory, master_filename);
         % runCancelled = false; fileSkipped = false; missingsaves = {}; %uncomment along with the _test call above (the _test function has none of these outputs)
 
@@ -275,7 +277,7 @@ for a = 1:numel(animal_inc)
 
         %user hit "Cancel. I'll be back" at the channel pick, or "Abort" at a missing result file - stop the whole run here
         if runCancelled == true
-            disp('ConditionalTrialRemove: run cancelled - see ya later. Files already done this run stay saved.');
+            disp('NNx_TrialRemove_Conditional: run cancelled - see ya later. Files already done this run stay saved.');
             return
         end
     end
@@ -283,14 +285,14 @@ end
 
 %post-run report: anything skipped, or not saved somewhere, for missing result files?
 if ~isempty(skipped_files)
-    disp('ConditionalTrialRemove: skipped these (missing spiking/LFP file) - nothing saved for them:');
+    disp('NNx_TrialRemove_Conditional: skipped these (missing spiking/LFP file) - nothing saved for them:');
     disp(skipped_files');
 end
 if ~isempty(nosave_files)
-    disp('ConditionalTrialRemove: trials picked for these, but NOT saved into these missing files:');
+    disp('NNx_TrialRemove_Conditional: trials picked for these, but NOT saved into these missing files:');
     disp(nosave_files');
 end
-disp('ConditionalTrialRemove: done.');
+disp('NNx_TrialRemove_Conditional: done.');
 
 %% ------------------------- local functions -------------------------
 
@@ -321,7 +323,7 @@ function answer = nonModalConfirm(question, dlgtitle)
 % Minimal Yes / No confirm dialog, non-modal so the user can still click
 % into the tr_conditional_master table (or anything else) while
 % deciding. Duplicated (rather than shared) from the near-identical
-% local function in ConditionalTrialRemove_callable.m, since MATLAB
+% local function in NNx_TrialRemove_Conditional_callable.m, since MATLAB
 % local functions aren't callable across files - see that file if the
 % two ever need to be reconciled.
 answer = 'No';

@@ -1,6 +1,7 @@
-% QuickTrialRemove.m
+% NNx_TrialRemove_Hard.m
 %
-% Description: Downstream, standalone trial-curation utility. Lets the
+% Description: (formerly QuickTrialRemove.m, renamed 2026-11-07)
+%   Downstream, standalone trial-curation utility. Lets the
 %   user visually inspect LFP and spike-raster traces for one channel
 %   of an already-preprocessed animal/condition (output of
 %   NNx_BaseAnalysis.m or a variant), manually choose trials to

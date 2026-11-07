@@ -28,7 +28,7 @@
 %       presumably uV [inferred: units not stated upstream]
 %     tr_keep (double, 1 x nTrials) - trial numbers (indices into dim 1)
 %     tr_remove (0/1, 1 x nTrials) - mask over tr_keep (updated format from
-%       ConditionalTrialRemove(_callable).m); only tr_keep(tr_remove == 0) are used. Old format
+%       NNx_TrialRemove_Conditional(_callable).m); only tr_keep(tr_remove == 0) are used. Old format
 %       (different length) stops the script with an error
 %   <probeinfo_dir>\<animal>-ProbeInfo.mat, ProbeInfo fields:
 %     .Areas (cell of char, 1 x probes) - region per probe; region picks the probe
@@ -86,7 +86,7 @@
 %   csv (save_csv = 1) - tableres to <csv_directory>\<name>.csv
 %   figures (plotsave = 1) - <save_directory>\Figures_LFPCorr\<animal>\ and \Figures_LFPCorr\
 %
-% Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); ConditionalTrialRemove(_callable).m
+% Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); NNx_TrialRemove_Conditional(_callable).m
 %   (tr_remove mask format); ProbeInfo.ShankLabels from the channel/shank labelling scripts (heatmaps);
 %   plotLWIntensityCompare_multianimal.m / plotLWTTXCompare_multianimal.m (heatplot); uipickfiles.m;
 %   Signal Processing Toolbox (butter, zp2sos, filtfilt); Statistics Toolbox (corr, ranksum,
@@ -372,7 +372,7 @@ for con = 1:ncond
         disp(['Loading: ' condis{con} ', ' fname])
         d = load(superCondis_dir{con}{file},'stim_lfp_stimchunks','tr_keep','tr_remove');
         if numel(d.tr_remove) ~= numel(d.tr_keep)
-            error([fname ': tr_remove is not a 0/1 mask over tr_keep (old format). Run the file through ConditionalTrialRemove first'])
+            error([fname ': tr_remove is not a 0/1 mask over tr_keep (old format). Run the file through NNx_TrialRemove_Conditional first'])
         end
         if loadsamp(1) < 1 || loadsamp(end) > size(d.stim_lfp_stimchunks,2)
             error([fname ': the windows + filter padding run off the end of the trials (' num2str(size(d.stim_lfp_stimchunks,2)) ' samples)'])

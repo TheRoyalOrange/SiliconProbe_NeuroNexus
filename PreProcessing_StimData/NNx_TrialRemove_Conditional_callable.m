@@ -1,6 +1,7 @@
-% ConditionalTrialRemove_callable.m
+% NNx_TrialRemove_Conditional_callable.m
 %
-% Description: Callable, loop-friendly trial-curation utility. For one
+% Description: (formerly ConditionalTrialRemove_callable.m, renamed
+%   2026-11-07) Callable, loop-friendly trial-curation utility. For one
 %   animal/condition/channel, checks whether a NAMED trial-exclusion
 %   condition (tr_conditional) already has a recorded trial set in this
 %   file's own tr_remove_conditional table (table, columns Name/
@@ -94,7 +95,7 @@
 %   do_it_live (0/1, optional) - defaults to 0. 1 = skip the activity
 %     label pick (and its no-labels dialog) and go straight to the old
 %     channel pick (LFP overview figs + typed channel number) - see chan
-%     below. ConditionalTrialRemove.m passes 1 for animals whose ProbeInfo
+%     below. NNx_TrialRemove_Conditional.m passes 1 for animals whose ProbeInfo
 %     has no labels, after the user already said "do it live" in its
 %     pre-run check, so they aren't asked again for every file.
 %   ProbeInfo activity labels (optional, used to pick chan) - read from
@@ -209,7 +210,7 @@
 %   NNx_editProbeInfo_ChLabel_StimData.m / NNx_editProbeInfo_ChLabel_SponData.m
 %   run first so ProbeInfo has activity labels for the channel map.
 
-function [ProbeInfo, runCancelled, fileSkipped, missingsaves] = ConditionalTrialRemove_callable(animal, condition, tr_conditional, fs, ProbeInfo, save_directory, master_filename, do_it_live)
+function [ProbeInfo, runCancelled, fileSkipped, missingsaves] = NNx_TrialRemove_Conditional_callable(animal, condition, tr_conditional, fs, ProbeInfo, save_directory, master_filename, do_it_live)
 
 runCancelled = false; %flips to true only if the user hits "Cancel. I'll be back" at the channel pick, or "Abort" at the missing-file check
 fileSkipped = false; %flips to true only if the spiking or LFP file is missing and the user says skip this file
@@ -233,10 +234,10 @@ if nargin < 5 || isempty(ProbeInfo)
 end
 
 if ~isstruct(ProbeInfo) || ~isscalar(ProbeInfo)
-    error('ConditionalTrialRemove_callable:InvalidProbeInfo', ...
+    error('NNx_TrialRemove_Conditional_callable:InvalidProbeInfo', ...
         ['ProbeInfo must be a scalar struct, got a %s. This usually means a stale call ' ...
          'still passes chan as the 3rd argument - the current signature is ' ...
-         'ConditionalTrialRemove_callable(animal, condition, tr_conditional, fs, ProbeInfo, save_directory), ' ...
+         'NNx_TrialRemove_Conditional_callable(animal, condition, tr_conditional, fs, ProbeInfo, save_directory), ' ...
          'with chan now chosen via dialog instead of as an input.'], class(ProbeInfo));
 end
 
@@ -245,10 +246,10 @@ if nargin < 4 || isempty(fs)
 end
 
 if ~isnumeric(fs) || ~isscalar(fs)
-    error('ConditionalTrialRemove_callable:InvalidFs', ...
+    error('NNx_TrialRemove_Conditional_callable:InvalidFs', ...
         ['fs must be a numeric scalar, got a %s. This usually means fs was omitted from a call ' ...
          'that still supplied later arguments, letting one of them (often ProbeInfo) land in the ' ...
-         'fs slot instead - the current signature is ConditionalTrialRemove_callable(animal, ' ...
+         'fs slot instead - the current signature is NNx_TrialRemove_Conditional_callable(animal, ' ...
          'condition, tr_conditional, fs, ProbeInfo, save_directory). Pass [] for fs to use its ' ...
          'default (30000) while still supplying later arguments.'], class(fs));
 end
@@ -279,7 +280,7 @@ if fileexists(1) == false || fileexists(2) == false
     if strcmp(missingAnswer, 'Skip this file, keep going')
         fileSkipped = true; %caller adds it to its skipped list for the post-run report
     else %abort button, or closed the box
-        disp(['ConditionalTrialRemove_callable: run aborted at ' full_filename ' (result file(s) missing) - nothing saved for this file.']);
+        disp(['NNx_TrialRemove_Conditional_callable: run aborted at ' full_filename ' (result file(s) missing) - nothing saved for this file.']);
         runCancelled = true;
     end
     return
@@ -312,7 +313,7 @@ if ~isempty(missingsaves)
         'Skip saving to those and keep going, or abort the whole run?'], strjoin(missingsaves, '\n'), tr_conditional, full_filename);
     missingAnswer = twoButtonDialog(missingMsg, 'Result file(s) missing', 'Skip saving to those, keep going', 'Abort. I''ll be back');
     if ~strcmp(missingAnswer, 'Skip saving to those, keep going') %abort button, or closed the box
-        disp(['ConditionalTrialRemove_callable: run aborted at ' full_filename ' (result file(s) missing) - nothing saved for this file.']);
+        disp(['NNx_TrialRemove_Conditional_callable: run aborted at ' full_filename ' (result file(s) missing) - nothing saved for this file.']);
         missingsaves = {};
         runCancelled = true;
         return
@@ -383,7 +384,7 @@ if isempty(chan)
     if do_it_live == 0 %already chosen up front if do_it_live = 1, so don't ask again
         fallbackAnswer = twoButtonDialog(fallbackMsg, 'No channel picked yet', 'Fuck it, we''ll do it live', 'Cancel. I''ll be back');
         if strcmp(fallbackAnswer, 'Cancel. I''ll be back')
-            disp(['ConditionalTrialRemove_callable: run cancelled at ' full_filename ' - nothing saved for this file.']);
+            disp(['NNx_TrialRemove_Conditional_callable: run cancelled at ' full_filename ' - nothing saved for this file.']);
             runCancelled = true;
             return
         end
@@ -396,7 +397,7 @@ if isempty(chan)
         if isfile(lfpFigFile)
             openfig(lfpFigFile);
         else
-            warning('ConditionalTrialRemove_callable:LFPFigNotFound', 'LFP overview figure not found for %s, probe ''%s'': %s', full_filename, ProbeInfo.Areas{prb}, lfpFigFile);
+            warning('NNx_TrialRemove_Conditional_callable:LFPFigNotFound', 'LFP overview figure not found for %s, probe ''%s'': %s', full_filename, ProbeInfo.Areas{prb}, lfpFigFile);
         end
     end
 
@@ -460,7 +461,7 @@ end
 tr_remove_conditional = [tr_remove_conditional; newRows];
 
 %% save the new selection into all four result files, and log what was written
-fprintf('\n--- ConditionalTrialRemove_callable: rows added for %s, condition ''%s'' ---\n', full_filename, tr_conditional);
+fprintf('\n--- NNx_TrialRemove_Conditional_callable: rows added for %s, condition ''%s'' ---\n', full_filename, tr_conditional);
 disp(newRows);
 
 % save(fullfile([save_directory '\Spiking\' animal '\' full_filename '-spiking_results.mat']), 'tr_remove_conditional', '-append');

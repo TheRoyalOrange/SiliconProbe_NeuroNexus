@@ -54,7 +54,7 @@ function [oscillations, snippets, probeSnippets] = oshkosh_detect_funct(animal, 
 %     dual low/high band split - there is now only one band.
 %   save_directory (string) - REQUIRED. Base folder used to locate
 %     ProbeInfo, from <save_directory>\ProbeInfo\<animal>-ProbeInfo.mat
-%     (same convention as ConditionalTrialRemove_callable.m), unless
+%     (same convention as NNx_TrialRemove_Conditional_callable.m), unless
 %     ProbeInfo is passed in directly. This function does NOT save
 %     anything to disk itself (see Outputs) - callers who want to persist
 %     oscillations/snippets/probeSnippets should save() them wherever they

@@ -63,11 +63,11 @@
 %     tr_keep (int vector) - kept trial indices
 %     tr_remove - INFERRED, two formats exist: BaseAnalysis saves removed
 %       trial indices (already excluded from tr_keep);
-%       ConditionalTrialRemove_callable.m migrates missing/empty ones to a
+%       NNx_TrialRemove_Conditional_callable.m migrates missing/empty ones to a
 %       0/1 mask the same length as tr_keep. Detected per file and logged
 %       in report.files.tr_remove_format.
 %     tr_remove_conditional (table, optional) - Name/TrialIdx rows from
-%       ConditionalTrialRemove_callable.m; TrialIdx = original trial
+%       NNx_TrialRemove_Conditional_callable.m; TrialIdx = original trial
 %       numbers, NaN = condition checked, nothing removed. Applied only for
 %       names listed in tr_conditional_names.
 %   User parameters - see section 1.
@@ -157,7 +157,7 @@
 % Dependencies: NNx_BaseAnalysis.m (LFP files, ProbeInfo),
 %   NNx_editProbeInfo_ChRemove.m (Ch_Remove), uipickfiles.m,
 %   Signal Processing Toolbox (bandpass); optional
-%   ConditionalTrialRemove_callable.m (tr_remove_conditional).
+%   NNx_TrialRemove_Conditional_callable.m (tr_remove_conditional).
 %   OFF sections also need CSD_flex.m (this folder) and slanCM.m.
 
 %% 1 PARAMETERS
@@ -325,7 +325,7 @@ for con = 1:numel(ref_condis)
             tr_remove = F.tr_remove(:)';
         end
         if ~isempty(tr_remove) && numel(tr_remove) == numel(tr_keep) && all(ismember(tr_remove, [0 1]))
-            tr_use = tr_keep(~logical(tr_remove)); %0/1 mask over tr_keep (ConditionalTrialRemove format)
+            tr_use = tr_keep(~logical(tr_remove)); %0/1 mask over tr_keep (NNx_TrialRemove_Conditional format)
             rmformat = "mask";
         else
             tr_use = setdiff(tr_keep, tr_remove, 'stable'); %index list (BaseAnalysis format)

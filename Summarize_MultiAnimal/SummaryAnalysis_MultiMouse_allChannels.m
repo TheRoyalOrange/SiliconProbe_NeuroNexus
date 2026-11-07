@@ -31,7 +31,7 @@
 %       must match exactly one entry of that mouse's ProbeInfo.Areas (selects the probe)
 %     condis (cell array of char, 1 x nCond) - condition names; order becomes the factor order in R
 %     tr_conditional_use (cell array of strings, 1 x nLabels) - names of trial labels made with
-%       ConditionalTrialRemove.m to add as Excl_<name> columns; empty = none
+%       NNx_TrialRemove_Conditional.m to add as Excl_<name> columns; empty = none
 %     lfp_band (double, 1 x 2) - bandpass for the LFP RMS envelope, Hz ([1 150]); Butterworth,
 %       2nd order per edge, second-order sections, filtfilt (zero phase)
 %     rms_win_ms (double) - RMS envelope window for LFP RMSsum (25)
@@ -48,10 +48,10 @@
 %       [inferred: holds when ProbeInfo.ChanIds = 1:Chans]
 %     tr_keep (double, 1 x nTrials) - trial numbers (indices into dim 1 of the data)
 %     tr_remove (0/1, 1 x nTrials) - mask over tr_keep (updated format, as written by
-%       ConditionalTrialRemove_callable.m); only tr_keep(~tr_remove) are analyzed.
+%       NNx_TrialRemove_Conditional_callable.m); only tr_keep(~tr_remove) are analyzed.
 %       Must be the same length as tr_keep, else the script stops with an error
 %     tr_remove_conditional (table, columns Name (string) / TrialIdx (double), optional) -
-%       trial labels from ConditionalTrialRemove_callable.m; one Name can have many rows;
+%       trial labels from NNx_TrialRemove_Conditional_callable.m; one Name can have many rows;
 %       NaN TrialIdx = evaluated, none flagged; Name absent = file not evaluated for it
 %   Spiking file of each recording, found by replacing \LFP\ with \Spiking\ and -LFP.mat with
 %   -spiking_results.mat in the LFP file's path, containing:
@@ -144,7 +144,7 @@
 %
 % Dependencies: NNx_BaseAnalysis*.m (writes *-LFP.mat, *-spiking_results.mat and
 %   <animal>-ProbeInfo.mat); NNx_editProbeInfo_ChRemove.m (sets Ch_Remove);
-%   ConditionalTrialRemove.m / ConditionalTrialRemove_callable.m (tr_remove mask format,
+%   NNx_TrialRemove_Conditional.m / NNx_TrialRemove_Conditional_callable.m (tr_remove mask format,
 %   tr_remove_conditional labels); ProbeInfo.ShankLabels from the channel/shank labelling
 %   scripts. Requires uipickfiles (File Exchange), the Signal Processing Toolbox (butter,
 %   zp2sos, filtfilt, envelope) and MATLAB R2017b+ (islocalmax).
@@ -161,7 +161,7 @@ condis = {'W','L_8','LW_8','W_TTX','L_8_TTX','LW_8_TTX'}; %list conditions to be
 %condis = {'W','L_4','LW_4', 'L_8','LW_8','L_12','LW_12','L_15','LW_15'}; %list conditions to be included, named as you'd prefer. Note the order
 % as they will be treated as factors later
 
-%trial labels made with ConditionalTrialRemove.m to add as columns (empty = none)
+%trial labels made with NNx_TrialRemove_Conditional.m to add as columns (empty = none)
 %each becomes a column Excl_<name>: 1 = flagged, 0 = evaluated & not flagged, NaN = file not evaluated
 tr_conditional_use = {}; %e.g. {"whisker_twitch_artifact"}
 
@@ -250,7 +250,7 @@ end
 %(tr_remove empty, or a list of removed trial numbers with those removed from tr_keep) are converted
 %and saved back into the LFP file; the spiking file of the same recording then gets the LFP file's
 %tr_keep/tr_remove (saved with -append; nothing else in either file is changed).
-%Remove this section once all files have been through ConditionalTrialRemove(_callable).m
+%Remove this section once all files have been through NNx_TrialRemove_Conditional(_callable).m
 for con = 1:numel(condis)
     for file = 1:numel(superCondis_dir{con})
         lf = superCondis_dir{con}{file};
