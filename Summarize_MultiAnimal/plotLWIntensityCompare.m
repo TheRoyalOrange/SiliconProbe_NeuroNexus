@@ -67,8 +67,8 @@
 %     <area> is the probe's name in ProbeInfo.Areas (also when region is given as a probe number)
 %
 % Dependencies: plotProbeLabels.m (same folder); SummaryAnalysis_MultiMouse_allChannels.m
-%   (or the single-type all-channels scripts) for summaryTable; ChannelShankLabelling_SponData.m /
-%   ChannelShankLabelling_StimData.m for the labels. MATLAB R2020b+ (nested tiledlayout);
+%   (or the single-type all-channels scripts) for summaryTable; NNx_editProbeInfo_ChLabel_SponData.m /
+%   NNx_editProbeInfo_ChLabel_StimData.m for the labels. MATLAB R2020b+ (nested tiledlayout);
 %   Statistics and Machine Learning Toolbox (ranksum).
 
 function figs = plotLWIntensityCompare(animal, summaryTable, region, features, stimlabels, do_stats, save_png)

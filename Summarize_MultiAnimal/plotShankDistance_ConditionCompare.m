@@ -79,8 +79,8 @@
 %     (savebase = E:\Roy\Processed Silicon Probe Data\BundledAnimalData\MultAnimal)
 %
 % Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable (including its section
-%   adding Chan_Shank / Chan_Depth); ProbeInfo.ShankLabels from ChannelShankLabelling_SponData.m /
-%   ChannelShankLabelling_StimData.m. Same alignment as plotLWIntensityCompare_multianimal.m.
+%   adding Chan_Shank / Chan_Depth); ProbeInfo.ShankLabels from NNx_editProbeInfo_ChLabel_SponData.m /
+%   NNx_editProbeInfo_ChLabel_StimData.m. Same alignment as plotLWIntensityCompare_multianimal.m.
 %   MATLAB R2020b+ (tiledlayout legend tile); Statistics and Machine Learning Toolbox (quantile,
 %   fitlme, fitlm).
 

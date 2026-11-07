@@ -8,7 +8,7 @@
 %   (measure column), a 4 x 1 tiled layout:
 %     tile 1: line plot, one line per animal, of the chosen label's shank scores from
 %       ProbeInfo.ShankLabels (the values of the shank activity plots of
-%       ChannelShankLabelling_SponData.m / plotProbeLabels.m) for the 5 aligned shanks;
+%       NNx_editProbeInfo_ChLabel_SponData.m / plotProbeLabels.m) for the 5 aligned shanks;
 %       with scorenorm, each animal's scores divided by its top shank's score (top = 1)
 %     tiles 2-4: heatmap (5 columns x rows) of the mean over animals of each animal's
 %       per-position mean over trials: condition A alone (green), or B - A (each animal's
@@ -92,7 +92,7 @@
 %
 % Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable, including its
 %   separate section that adds Chan_Shank / Chan_Depth / ShankRank_<score>; ProbeInfo.ShankLabels
-%   from ChannelShankLabelling_SponData.m / ChannelShankLabelling_StimData.m. Same arguments
+%   from NNx_editProbeInfo_ChLabel_SponData.m / NNx_editProbeInfo_ChLabel_StimData.m. Same arguments
 %   and re-centring as plotRankedShankProfile.m. MATLAB R2019b+ (tiledlayout); Statistics and
 %   Machine Learning Toolbox (ranksum) for do_stats.
 

@@ -411,7 +411,7 @@ if Cogito_ProbeSum == 0 && isfile(probeinfo_file)
         end
     end
 
-    %activity labels (from the ChannelShankLabelling scripts)
+    %activity labels (from the NNx_editProbeInfo_ChLabel scripts)
     labeltypes = {'ChanLabels','ShankLabels'};
     for lt = 1:numel(labeltypes)
         if isfield(old_probeinfo,labeltypes{lt})

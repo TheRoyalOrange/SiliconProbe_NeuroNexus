@@ -1,7 +1,7 @@
 % plotProbeLabels.m
 %
 % Description: Redraws the channel/shank activity-label plots of
-%   ChannelShankLabelling_SponData.m and ChannelShankLabelling_StimData.m from
+%   NNx_editProbeInfo_ChLabel_SponData.m and NNx_editProbeInfo_ChLabel_StimData.m from
 %   what those scripts save in ProbeInfo, so they can be made without rerunning
 %   the labelling. One figure per label: top = shank score per shank (line with
 %   markers, one point per ProbeMaps column), bottom = heatmap of the channel
@@ -20,7 +20,7 @@
 %     .ChanLabels (cell, 1 x nProbes, optional) - per probe a struct of channel labels,
 %       each rows x shanks (ProbeMaps layout; NaN = no score, e.g. removed channel)
 %     .chLabels (cell, 1 x nProbes, optional) - older name for ChanLabels (used by earlier
-%       versions of ChannelShankLabelling_SponData.m); read when a label isn't in ChanLabels
+%       versions of NNx_editProbeInfo_ChLabel_SponData.m); read when a label isn't in ChanLabels
 %     .Ch_Remove (cell, 1 x nProbes, optional) - raw channel IDs removed per probe
 %     .Animal (char, optional), .Areas (cell, optional) - used in the titles
 %   prb (double, scalar) - probe index (into ProbeMaps / the label cells)
@@ -34,7 +34,7 @@
 %   figs (graphics handle array) - one figure per label plotted (or, with parent, one nested
 %     layout per label); empty if the probe has no labels
 %
-% Dependencies: ChannelShankLabelling_SponData.m / ChannelShankLabelling_StimData.m
+% Dependencies: NNx_editProbeInfo_ChLabel_SponData.m / NNx_editProbeInfo_ChLabel_StimData.m
 %   (write ProbeInfo.ChanLabels / ShankLabels); NNx_BaseAnalysis*.m (ProbeMaps);
 %   NNx_editProbeInfo_ChRemove.m (Ch_Remove).
 

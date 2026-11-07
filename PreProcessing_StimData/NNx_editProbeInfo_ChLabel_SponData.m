@@ -1,9 +1,10 @@
-%% ChannelShankLabelling_SponData.m
+%% NNx_editProbeInfo_ChLabel_SponData.m
 %
-% Description: Identifies which channels/shanks on a probe are most active
+% Description: (formerly ChannelShankLabelling_SponData.m, renamed
+%   2026-11-07) Identifies which channels/shanks on a probe are most active
 %   during spontaneous activity, so each shank or channel can be labelled by
 %   these values for later location referencing (stimulus-driven activity is
-%   scored separately in ChannelShankLabelling_StimData.m). Detects
+%   scored separately in NNx_editProbeInfo_ChLabel_StimData.m). Detects
 %   oscillatory probe events (prbEvent) with oshkosh_detect_funct, then for
 %   every prbEvent NOT overlapping a stimulus sums each channel's moving-RMS
 %   envelope (200-sample window) over the event window. Shank score = mean

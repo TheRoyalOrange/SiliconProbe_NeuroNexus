@@ -1,10 +1,11 @@
-%% ChannelShankLabelling_StimData.m
+%% NNx_editProbeInfo_ChLabel_StimData.m
 %
-% Description: Identifies which channels/shanks on a probe are most active
+% Description: (formerly ChannelShankLabelling_StimData.m, renamed
+%   2026-11-07) Identifies which channels/shanks on a probe are most active
 %   during stimulus-driven activity (according to some set of stimuli chosen
 %   by the user, e.g. light/visual stim), so each shank or channel can be
 %   labelled by these values for later location referencing (spontaneous
-%   activity is scored separately in ChannelShankLabelling_SponData.m).
+%   activity is scored separately in NNx_editProbeInfo_ChLabel_SponData.m).
 %   Loads stim_lfp_stimchunks from user-picked processed LFP files (trials
 %   from all files are pooled), computes each trial/channel's moving-RMS
 %   envelope (200-sample window), subtracts its mean pre-stim RMS (samples
@@ -45,7 +46,7 @@
 %       .ShankLabels{p}.(labelname) (double, 1 x shanks, e.g. 1x8) -
 %         shnkActivityScore_Stim; NaN for shanks with no scored channels
 %       (ChanLabels / ShankLabels: cell, 1 x probenum, indexed like
-%       ProbeMaps, each a struct of labels - see ChannelShankLabelling_SponData.m)
+%       ProbeMaps, each a struct of labels - see NNx_editProbeInfo_ChLabel_SponData.m)
 %   Figures (one per probe, not saved) - top: shnkActivityScore_Stim line
 %     plot across shanks; bottom: heatmap of chActivityScore_Stim in the
 %     ProbeMaps layout (rows x shanks), Ch_Remove channels in black ('X').
@@ -131,7 +132,7 @@ for prbi = 1:length(probes)
 end
 
 %% Add activity labels to ProbeInfo and save
-% Same structure as ChannelShankLabelling_SponData.m: ProbeInfo.ChanLabels{p} /
+% Same structure as NNx_editProbeInfo_ChLabel_SponData.m: ProbeInfo.ChanLabels{p} /
 % ProbeInfo.ShankLabels{p} are one struct per probe (indexed like ProbeMaps),
 % one field per label type. The user names the field for these stimulus
 % scores (e.g. 'whisker'); other label fields already in ProbeInfo are kept.

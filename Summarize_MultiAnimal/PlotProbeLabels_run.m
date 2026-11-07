@@ -1,7 +1,7 @@
 % PlotProbeLabels_run.m
 %
 % Description: Plots the channel/shank activity labels saved in ProbeInfo (by
-%   ChannelShankLabelling_SponData.m / ChannelShankLabelling_StimData.m) for a list
+%   NNx_editProbeInfo_ChLabel_SponData.m / NNx_editProbeInfo_ChLabel_StimData.m) for a list
 %   of mice, using plotProbeLabels.m: one figure per label and mouse, with the shank
 %   scores on top and the channel-score heatmap in the ProbeMaps layout below. The
 %   probe for each mouse is the one whose ProbeInfo.Areas matches its region (as in
@@ -20,8 +20,8 @@
 %   figs_labels (struct) - one field per mouse (valid field name of the animal ID), each the
 %     figure handles returned by plotProbeLabels
 %
-% Dependencies: plotProbeLabels.m (same folder); ChannelShankLabelling_SponData.m /
-%   ChannelShankLabelling_StimData.m (write the labels into ProbeInfo).
+% Dependencies: plotProbeLabels.m (same folder); NNx_editProbeInfo_ChLabel_SponData.m /
+%   NNx_editProbeInfo_ChLabel_StimData.m (write the labels into ProbeInfo).
 
 mice = {"20260423-p12"};
 region = {"V1"};

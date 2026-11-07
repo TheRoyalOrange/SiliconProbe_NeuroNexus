@@ -78,7 +78,7 @@
 %
 % Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable, including its
 %   separate section that adds Chan_Shank / Chan_Depth / ShankRank_<score> (ShankLabels from
-%   ChannelShankLabelling_SponData.m / ChannelShankLabelling_StimData.m). Style follows
+%   NNx_editProbeInfo_ChLabel_SponData.m / NNx_editProbeInfo_ChLabel_StimData.m). Style follows
 %   plotProbeLabels.m and plotLWIntensityCompare.m. MATLAB R2019b+ (tiledlayout);
 %   Statistics and Machine Learning Toolbox (ranksum) for do_stats.
 

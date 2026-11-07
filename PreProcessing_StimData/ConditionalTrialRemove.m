@@ -20,7 +20,7 @@
 %   already-recorded assignment). Then, before any files are picked,
 %   loads every animal's ProbeInfo and checks it has at least one probe
 %   activity label (ProbeInfo.ChanLabels, made by
-%   ChannelShankLabelling_StimData.m / _SponData.m). If any animal has no
+%   NNx_editProbeInfo_ChLabel_StimData.m / _SponData.m). If any animal has no
 %   labels (or no ProbeInfo file), a questdlg lists them and offers
 %   "Fuck it, we'll do it live" (carry on - those animals fall back to the
 %   old LFP-figs + typed channel number pick, passed to the callable as
@@ -193,8 +193,8 @@ clear probeinfo_dat
 if ~isempty(nolabel_animals) || ~isempty(noprobeinfo_animals)
     labelMsg = 'Heads up before the run starts:';
     if ~isempty(nolabel_animals)
-        labelMsg = sprintf(['%s\n\nNo probe activity labels exist for:\n%s\n\nRecommend running ChannelShankLabelling_StimData.m ' ...
-            'and/or ChannelShankLabelling_SponData.m on these first. If you go ahead, you''ll pick their channels the old way ' ...
+        labelMsg = sprintf(['%s\n\nNo probe activity labels exist for:\n%s\n\nRecommend running NNx_editProbeInfo_ChLabel_StimData.m ' ...
+            'and/or NNx_editProbeInfo_ChLabel_SponData.m on these first. If you go ahead, you''ll pick their channels the old way ' ...
             '(LFP overview figs + typing the channel number).'], labelMsg, strjoin(nolabel_animals, '\n'));
     end
     if ~isempty(noprobeinfo_animals)

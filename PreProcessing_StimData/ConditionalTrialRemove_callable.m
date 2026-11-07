@@ -98,8 +98,8 @@
 %     has no labels, after the user already said "do it live" in its
 %     pre-run check, so they aren't asked again for every file.
 %   ProbeInfo activity labels (optional, used to pick chan) - read from
-%     the ProbeInfo struct above. Made by ChannelShankLabelling_StimData.m
-%     / ChannelShankLabelling_SponData.m:
+%     the ProbeInfo struct above. Made by NNx_editProbeInfo_ChLabel_StimData.m
+%     / NNx_editProbeInfo_ChLabel_SponData.m:
 %       .ChanLabels (cell, 1 x probenum) - each a struct, one field per
 %         label name; field = double [rows x shanks] channel scores in the
 %         ProbeMaps layout, NaN for Ch_Remove channels
@@ -130,7 +130,7 @@
 %     cell gives chan = ProbeInfo.ProbeMaps{prb}(r,c), the raw channel
 %     ID. This assumes the 3rd dim of stim_lfp_stimchunks /
 %     stim_spike_stimchunks is indexed by raw channel ID, the same way
-%     ChannelShankLabelling_StimData.m indexes it to make the labels.
+%     NNx_editProbeInfo_ChLabel_StimData.m indexes it to make the labels.
 %     Once chosen,
 %     stim_spike_stimchunks is read for this channel only, via a
 %     matfile object indexed as stim_spike_stimchunks(:,:,chan), so only
@@ -206,7 +206,7 @@
 %   issued instead) the per-probe lfp_results.fig files under
 %   Figures_BaseAnalysis to have been saved for this animal/condition (only
 %   opened on the "do it live" fallback). Optionally,
-%   ChannelShankLabelling_StimData.m / ChannelShankLabelling_SponData.m
+%   NNx_editProbeInfo_ChLabel_StimData.m / NNx_editProbeInfo_ChLabel_SponData.m
 %   run first so ProbeInfo has activity labels for the channel map.
 
 function [ProbeInfo, runCancelled, fileSkipped, missingsaves] = ConditionalTrialRemove_callable(animal, condition, tr_conditional, fs, ProbeInfo, save_directory, master_filename, do_it_live)
@@ -362,8 +362,8 @@ end
 chan = []; %stays empty until a channel is picked off the label map
 if do_it_live == 0 %do_it_live = 1 means the caller already chose the old way - skip the label pick entirely
     if isempty(labelnames)
-        fallbackMsg = sprintf(['No probe activity labels exist for %s.\n\nRecommend running ChannelShankLabelling_StimData.m ' ...
-            'and/or ChannelShankLabelling_SponData.m first to make them.'], animal);
+        fallbackMsg = sprintf(['No probe activity labels exist for %s.\n\nRecommend running NNx_editProbeInfo_ChLabel_StimData.m ' ...
+            'and/or NNx_editProbeInfo_ChLabel_SponData.m first to make them.'], animal);
     else
         %which label should color the channel map?
         [labelIdx, labelOK] = listdlg('ListString', labelnames, 'SelectionMode', 'single', 'ListSize', [300 150], ...
@@ -531,7 +531,7 @@ function chan = pickChanFromLabelMap(ProbeInfo, labelname, full_filename)
 % top = shank score line plot (ProbeInfo.ShankLabels), bottom = channel
 % score heatmap in the ProbeMaps layout (ProbeInfo.ChanLabels), Ch_Remove
 % channels black with an 'X', every other cell labelled with its channel
-% ID. Same look as ChannelShankLabelling_StimData.m's plot. Each click is
+% ID. Same look as NNx_editProbeInfo_ChLabel_StimData.m's plot. Each click is
 % confirmed with nonModalConfirm; "No, redo selection" waits for another
 % click. Returns the picked raw channel ID (pmap(r,c)), or [] if the user
 % closes the figure without picking.
@@ -545,7 +545,7 @@ for prb = 1:numel(ProbeInfo.ChanLabels)
     end
 end
 
-seqmap = interp1([0 0.5 1],[0.95 0.98 0.93; 0.55 0.82 0.40; 0.18 0.60 0.22],linspace(0,1,256)); %same pale mint -> green colormap as ChannelShankLabelling_StimData.m
+seqmap = interp1([0 0.5 1],[0.95 0.98 0.93; 0.55 0.82 0.40; 0.18 0.60 0.22],linspace(0,1,256)); %same pale mint -> green colormap as NNx_editProbeInfo_ChLabel_StimData.m
 fig = figure('Name', [full_filename ' - pick a channel'], 'NumberTitle', 'off', 'Color', 'w');
 tl = tiledlayout(fig, 4, numel(prbs), 'TileSpacing', 'compact');
 title(tl, [full_filename ' - ' labelname ': click the channel to inspect'], 'Interpreter', 'none');
