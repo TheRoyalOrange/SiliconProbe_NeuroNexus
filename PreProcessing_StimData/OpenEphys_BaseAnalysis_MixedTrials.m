@@ -2049,9 +2049,12 @@ if MUAmyfault == 1 & group == 1
     MUAthresh = inputdlg(prompt,dlgtitle,fieldsize,definput,opts);
     MUAthresh = str2num(MUAthresh{1});
     disp('Thanks.')
-else
-    MUAthresh = 10;
+%else  <- replaced: groups 2+ landed here and got 10, even after you picked your own threshold for group 1
+%    MUAthresh = 10;
+elseif MUAmyfault == 0
+    MUAthresh = 10; %default MAD multiplier
 end
+%with MUAmyfault == 1, groups 2+ keep the threshold you picked for group 1
 
 %get all timepoints over MAD threshold
 spikes = wittled_braindat <= MAD*MUAthresh ; % [channels x trials*epoch length], trial-interleaved, logical
