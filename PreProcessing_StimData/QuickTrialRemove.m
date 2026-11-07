@@ -38,7 +38,7 @@
 %     and filename_TF_results.mat. Not written to CSD_results.mat (see
 %     Description).
 %
-% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the _Bundled /
+% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the
 %   _MixedTrials variant) to have already been run for this
 %   animal/condition, producing the LFP.mat, spiking_results.mat, and
 %   TF_results.mat files this script loads/appends to.

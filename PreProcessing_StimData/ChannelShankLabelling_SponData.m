@@ -61,7 +61,7 @@
 %     plot across shanks; bottom: heatmap of chActivityScore_Spon in the
 %     ProbeMaps layout (rows x shanks), Ch_Remove channels in black ('X').
 %
-% Dependencies: OpenEphys_BaseAnalysis(_Bundled).m (builds ProbeInfo),
+% Dependencies: OpenEphys_BaseAnalysis.m (builds ProbeInfo),
 %   OpenEphys_editProbeInfo_ChRemove.m (Ch_Remove), oshkosh_detect_funct.m,
 %   oscillation_plotEvents.m, uipickfiles, Signal Processing Toolbox.
 %

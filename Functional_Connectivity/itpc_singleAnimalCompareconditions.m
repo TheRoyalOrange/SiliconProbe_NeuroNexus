@@ -55,7 +55,7 @@
 %     (rayleighZ / itpc^2), notes; shown in the last section
 %
 % Dependencies: ITPC_PhaseReset_singleanimal.m (results files, with its
-%   save line), ProbeInfo from OpenEphys_BaseAnalysis_Bundled.m,
+%   save line), ProbeInfo from OpenEphys_BaseAnalysis.m,
 %   uipickfiles.m, Signal Processing Toolbox (bandpass, only if erp_band
 %   is set).
 

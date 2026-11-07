@@ -62,7 +62,7 @@
 %   shnkActivityScore_Stim (cell, 1 x length(probes)) - each 1 x Nshanks
 %     double: mean channel score per shank (ProbeMaps column) of probes(p)
 %
-% Dependencies: OpenEphys_BaseAnalysis(_Bundled).m (builds ProbeInfo and the
+% Dependencies: OpenEphys_BaseAnalysis.m (builds ProbeInfo and the
 %   LFP files with stim_lfp_stimchunks), OpenEphys_editProbeInfo_ChRemove.m
 %   (Ch_Remove), uipickfiles.
 %

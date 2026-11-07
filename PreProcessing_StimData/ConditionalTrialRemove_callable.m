@@ -197,7 +197,7 @@
 %     including the "match found, skip" path. Also logged to the
 %     console.
 %
-% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the _Bundled /
+% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the
 %   _MixedTrials variant) to have already been run for this
 %   animal/condition, producing the LFP.mat and spiking_results.mat
 %   files this function reads, and <animal>-ProbeInfo.mat to already

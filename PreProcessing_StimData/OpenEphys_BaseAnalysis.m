@@ -1,6 +1,7 @@
-% OpenEphys_BaseAnalysis_Bundled.m
+% OpenEphys_BaseAnalysis.m
 %
-% Description: Bundled/batch version of OpenEphys_BaseAnalysis.m. Loops
+% Description: (formerly OpenEphys_BaseAnalysis_Bundled.m; the old
+%   single-recording OpenEphys_BaseAnalysis.m was removed 2026-11-07). Loops
 %   over some or all of one animal's OpenEphys recordings (one per
 %   stimulus condition in stim_all) and, per recording, loads raw data,
 %   detects stimulus onsets from the TTL channel, epochs peristimulus
@@ -9,9 +10,9 @@
 %   user interactively to remove bad channels/trials and to tune
 %   spike-detection and TF settings, once per recording in the loop.
 %   ProbeInfo is created/loaded once and reused across all recordings in
-%   the batch. This is the batch entry point for the first stage of the
-%   PreProcessing_StimData pipeline (use OpenEphys_BaseAnalysis.m for a
-%   single recording).
+%   the batch. This is the entry point for the first stage of the
+%   PreProcessing_StimData pipeline. For a single recording, list just one
+%   entry in stim_all.
 %
 % Inputs:
 %   data (OpenEphys recordings, .Rhythm Data format, loaded via
@@ -162,10 +163,10 @@
 %                                 plotted in shape of probe (ex. 8x8 probe has an 8x8 arrangement of
 %                                 subplots). There is one per probe
 %
-% Dependencies: None from this pipeline — this is the batch entry point
-%   for the first script run per animal (PreProcessing_StimData stage);
-%   it is the looped/batch counterpart of OpenEphys_BaseAnalysis.m (use
-%   that one for a single recording). Requires OpenEphys MATLAB tools on
+% Dependencies: None from this pipeline — this is the entry point
+%   for the first script run per animal (PreProcessing_StimData stage),
+%   for one or many recordings (OpenEphys_BaseAnalysis_MixedTrials.m is the
+%   version for interleaved conditions). Requires OpenEphys MATLAB tools on
 %   the path (uipickfiles, Session/continuous data readers) plus the
 %   CSDallshank and slanCM helper functions.
 %

@@ -38,7 +38,7 @@
 %     .Ch_Remove (cell array, 1 x number of probes; each cell a vector
 %     of channel IDs) set to badchans.
 %
-% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the _Bundled /
+% Dependencies: Expects OpenEphys_BaseAnalysis.m (or the
 %   _MixedTrials variant) to have already been run for this animal,
 %   producing the ProbeInfo.mat file this script loads and overwrites.
 %
