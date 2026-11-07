@@ -10,7 +10,10 @@
 %   user interactively to remove bad channels/trials and to tune
 %   spike-detection and TF settings, once per recording in the loop.
 %   ProbeInfo is created/loaded once and reused across all recordings in
-%   the batch. This is the entry point for the first stage of the
+%   the batch. With Cogito_ProbeSum = 0, if the saved ProbeInfo already
+%   has Ch_Remove channels or activity labels, asks once (before the
+%   loop) whether to overwrite it or cancel the run.
+%   This is the entry point for the first stage of the
 %   PreProcessing_StimData pipeline. For a single recording, list just one
 %   entry in stim_all.
 %
@@ -372,6 +375,68 @@ TTL = 1;
 
 
 %%%nothing else to fill in%%%
+
+%% Check before overwriting ProbeInfo
+%making a new ProbeInfo (Cogito_ProbeSum = 0) wipes Ch_Remove and the channel/shank activity labels,
+%so if this animal's saved ProbeInfo already has any of those, ask first. Done here, before the
+%recording loop, so you only get asked once and that answer covers the whole run
+probeinfo_file = fullfile([save_directory '\ProbeInfo\' animal '-ProbeInfo.mat']);
+if Cogito_ProbeSum == 0 && isfile(probeinfo_file)
+    old_probeinfo = load(probeinfo_file,'ProbeInfo');
+    old_probeinfo = old_probeinfo.ProbeInfo;
+    whats_there = {}; %what's filled in that would be lost
+
+    %removed channels (from OpenEphys_editProbeInfo_ChRemove.m)
+    if isfield(old_probeinfo,'Ch_Remove')
+        for prb = 1:numel(old_probeinfo.Ch_Remove)
+            if any(old_probeinfo.Ch_Remove{prb}(:) ~= 0)
+                whats_there{end+1} = ['removed channels on probe ' num2str(prb)];
+            end
+        end
+    end
+
+    %activity labels (from the ChannelShankLabelling scripts)
+    labeltypes = {'ChanLabels','ShankLabels'};
+    for lt = 1:numel(labeltypes)
+        if isfield(old_probeinfo,labeltypes{lt})
+            for prb = 1:numel(old_probeinfo.(labeltypes{lt}))
+                labs = old_probeinfo.(labeltypes{lt}){prb}; %struct of labels for this probe
+                if isstruct(labs)
+                    labnames = fieldnames(labs);
+                    for k = 1:numel(labnames)
+                        vals = labs.(labnames{k});
+                        if isnumeric(vals)
+                            filled = any(vals(:) ~= 0 & ~isnan(vals(:))); %all zeros or NaN = nothing there
+                        else
+                            filled = isempty(vals) == false; %e.g. a cell of label names
+                        end
+                        if filled
+                            whats_there{end+1} = ['activity label ' labnames{k} ' on probe ' num2str(prb)];
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    %anything there? then ask
+    if isempty(whats_there) == false
+        whats_there = unique(whats_there,'stable'); %ChanLabels and ShankLabels list the same label twice
+        dlgtitle = 'This ProbeInfo already has stuff in it';
+        quest = sprintf(['Cogito_ProbeSum = 0 will make a new ProbeInfo for %s and save it over the old one, which has:\n\n%s\n\n' ...
+            'All of that would be lost. Keep going?'], animal, strjoin(whats_there, newline));
+        btn1 = 'Continue, make a new ProbeInfo';
+        btn2 = 'Cancel, I''ll change a setting';
+        answer = questdlg(quest,dlgtitle,btn1,btn2,btn2);
+        switch answer
+            case btn1
+                disp('ProbeInfo: okay, making a new one over the old one')
+            otherwise %cancel, or the dialog was closed
+                error('Run cancelled so %s''s ProbeInfo isn''t overwritten. Set Cogito_ProbeSum = 1 to use the existing one.', animal)
+        end
+    end
+    clear old_probeinfo whats_there labeltypes labs labnames vals filled lt prb k
+end
 
 %% start the loop through each recording
 stimcheck = []; %stim detection info per recording (onsets, pulse widths, ignored glitches) for a post-run report
