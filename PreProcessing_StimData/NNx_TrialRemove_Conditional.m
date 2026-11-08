@@ -108,7 +108,7 @@
 %
 % Dependencies: NNx_TrialRemove_Conditional_callable.m (Functions\Analysis, must be on the MATLAB path);
 %   uipickfiles (must be on the MATLAB path - already used elsewhere in
-%   this repo, e.g. Summarize_MultiAnimal\SummaryAnalysis_MultiMouse_allChannels.m);
+%   this repo, e.g. Summarize_MultiAnimal\NNx_SummaryAnalysis_MultiMouse_allChannels.m);
 %   expects NNx_BaseAnalysis.m (or a variant) to have already been
 %   run for every animal/condition selected. For testing this script's
 %   own loop/wiring without touching real data, see

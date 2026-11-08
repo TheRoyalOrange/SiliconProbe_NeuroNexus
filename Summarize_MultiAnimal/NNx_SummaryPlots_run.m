@@ -1,7 +1,7 @@
-% SummaryPlots_run.m
+% NNx_SummaryPlots_run.m
 %
 % Description: One place to make every plot from the summary table (the csv written by
-%   SummaryAnalysis_MultiMouse_allChannels.m). Each %% section sets up and calls one plotting
+%   NNx_SummaryAnalysis_MultiMouse_allChannels.m). Each %% section sets up and calls one plotting
 %   function in Functions\Plotting. The sections are NOT meant to be run top to bottom:
 %   run the Setup section first (loads the table), then run only the section(s) you want
 %   (Ctrl+Enter in the section). Each section has its own little input block at its top.
@@ -17,7 +17,7 @@
 %     csvfiles (cell array of char, 1 x nFiles) - full paths of the csv(s) picked from a list of
 %       every .csv in csv_directory; loaded and stacked
 %     probeinfo_directory (char) - folder with <animal>-ProbeInfo.mat (probe-label section)
-%   <csv_directory>\<csvfiles> - tableres from SummaryAnalysis_MultiMouse_allChannels.m, one row per
+%   <csv_directory>\<csvfiles> - tableres from NNx_SummaryAnalysis_MultiMouse_allChannels.m, one row per
 %     good trial x channel. Columns used by the plotting functions:
 %       Animal_Name, Condition_Name, Region (text), Channel_ID (double)
 %       Chan_Shank, Chan_Depth, ShankRank_<score> (double) - from the summary script's label section
@@ -28,15 +28,15 @@
 %
 % Outputs (workspace, one set per section so sections don't overwrite each other):
 %   summaryTable (table) - the loaded / stacked summary table
-%   figs_labels (struct) - plotProbeLabels figures, one field per mouse
-%   figs_LWint (figure handles) - plotLWIntensityCompare
-%   figs_LWint_multi, data_LWint_multi - plotLWIntensityCompare_multianimal
-%   figs_LWTTX, data_LWTTX - plotLWTTXCompare_multianimal
-%   figs_shankprof, data_shankprof - plotRankedShankProfile
-%   figs_shankrowprof, data_shankrowprof - plotRankedShankRows
+%   figs_labels (struct) - NNx_plotProbeLabels figures, one field per mouse
+%   figs_LWint (figure handles) - NNx_plotLWIntensityCompare
+%   figs_LWint_multi, data_LWint_multi - NNx_plotLWIntensityCompare_multianimal
+%   figs_LWTTX, data_LWTTX - NNx_plotLWTTXCompare_multianimal
+%   figs_shankprof, data_shankprof - NNx_plotRankedShankProfile
+%   figs_shankrowprof, data_shankrowprof - NNx_plotRankedShankRows
 %   (data_* struct fields: see each function's header)
 %
-% Dependencies: SummaryAnalysis_MultiMouse_allChannels.m (makes the csv, including its section that
+% Dependencies: NNx_SummaryAnalysis_MultiMouse_allChannels.m (makes the csv, including its section that
 %   adds Chan_Shank / Chan_Depth / ShankRank_<score>); the plotting functions in Functions\Plotting
 %   (that folder must be on the Matlab path); NNx_editProbeInfo_ChLabel_SponData.m /
 %   NNx_editProbeInfo_ChLabel_StimData.m (labels in ProbeInfo).
@@ -70,7 +70,7 @@ probeinfo_directory = 'E:\Roy\Processed Silicon Probe Data\ProbeInfo';
 %%%nothing else to fill in%%%
 
 if use_tableres == 1
-    summaryTable = tableres; %the table straight from SummaryAnalysis_MultiMouse_allChannels.m
+    summaryTable = tableres; %the table straight from NNx_SummaryAnalysis_MultiMouse_allChannels.m
 else
     %replaced by the list dialog below (no typed file names anymore):
     % if isempty(csvfiles) == true
@@ -105,7 +105,7 @@ disp(['Setup: summary table loaded, ' num2str(height(summaryTable)) ' rows from 
 
 
 
-%% Data Visualization: Probe activity labels, single animals (plotProbeLabels)
+%% Data Visualization: Probe activity labels, single animals (NNx_plotProbeLabels)
 %one figure per label and mouse: shank scores on top, channel-score heatmap (ProbeMaps layout) below
 %doesn't need the summary table, just ProbeInfo
 
@@ -124,13 +124,13 @@ figs_labels = struct();
 for m = 1:numel(mice)
     prbinfo = load(fullfile(probeinfo_directory, [char(mice{m}) '-ProbeInfo.mat']),'ProbeInfo');
     prb = find(strcmp(prbinfo.ProbeInfo.Areas, region{m})); %probe whose area matches the region
-    figs_labels.(matlab.lang.makeValidName(char(mice{m}))) = plotProbeLabels(prbinfo.ProbeInfo, prb, labelnames);
+    figs_labels.(matlab.lang.makeValidName(char(mice{m}))) = NNx_plotProbeLabels(prbinfo.ProbeInfo, prb, labelnames);
 end
 clear prbinfo
 
 
 
-%% Data Visualization: L vs LW across light intensities, one animal (plotLWIntensityCompare)
+%% Data Visualization: L vs LW across light intensities, one animal (NNx_plotLWIntensityCompare)
 %one figure per feature: activity labels on top, then L, LW and LW - L channel maps for 4, 8, 12, 15 uW
 
 %Who is the data? (as in the Animal_Name column)
@@ -159,12 +159,12 @@ save_png_LWint = 0;
     % 0 = just show them
     % 1 = also save
 
-figs_LWint = plotLWIntensityCompare(animal, summaryTable, region_LWint, features_LWint, ...
+figs_LWint = NNx_plotLWIntensityCompare(animal, summaryTable, region_LWint, features_LWint, ...
     stimlabels_LWint, do_stats_LWint, save_png_LWint);
 
 
 
-%% Data Visualization: L vs LW across light intensities, multi-animal (plotLWIntensityCompare_multianimal)
+%% Data Visualization: L vs LW across light intensities, multi-animal (NNx_plotLWIntensityCompare_multianimal)
 %one figure per feature: shanks of each animal re-centred on its top shank for alignlabel,
 %labels on top, then L, LW and LW - L heatmaps (shank x depth) for 4, 8, 12, 15 uW
 
@@ -207,13 +207,13 @@ save_png_LWint_multi = 0;
     % 0 = just show them
     % 1 = also save
 
-[figs_LWint_multi, data_LWint_multi] = plotLWIntensityCompare_multianimal(animals_LWint_multi, summaryTable, ...
+[figs_LWint_multi, data_LWint_multi] = NNx_plotLWIntensityCompare_multianimal(animals_LWint_multi, summaryTable, ...
     region_LWint_multi, features_LWint_multi, stimlabels_LWint_multi, do_stats_LWint_multi, ...
     save_png_LWint_multi, alignlabel_LWint_multi, rowlines_LWint_multi, trialfilter_LWint_multi);
 
 
 
-%% Data Visualization: L vs LW before and with TTX, multi-animal (plotLWTTXCompare_multianimal)
+%% Data Visualization: L vs LW before and with TTX, multi-animal (NNx_plotLWTTXCompare_multianimal)
 %one figure per feature: same alignment as above, then L_8 / LW_8 before and with TTX, their ratios
 %and ratio comparisons. The table needs the L_8, LW_8, L_8_TTX, LW_8_TTX conditions
 
@@ -256,12 +256,12 @@ save_png_LWTTX = 0;
     % 0 = just show them
     % 1 = also save
 
-[figs_LWTTX, data_LWTTX] = plotLWTTXCompare_multianimal(animals_LWTTX, summaryTable, region_LWTTX, features_LWTTX, ...
+[figs_LWTTX, data_LWTTX] = NNx_plotLWTTXCompare_multianimal(animals_LWTTX, summaryTable, region_LWTTX, features_LWTTX, ...
     stimlabels_LWTTX, do_stats_LWTTX, save_png_LWTTX, alignlabel_LWTTX, rowlines_LWTTX, trialfilter_LWTTX);
 
 
 
-%% Data Visualization: Ranked shank profile, multi-animal (plotRankedShankProfile)
+%% Data Visualization: Ranked shank profile, multi-animal (NNx_plotRankedShankProfile)
 %one figure per feature: per-animal line plots across the 5 shanks around each animal's top shank
 %(+ normalized version), and heatmaps of condA (or condB - condA)
 
@@ -308,12 +308,12 @@ normto_shankprof = 3;
     % "peak" = each line's highest value
     % "none" = no normalized plot
 
-[figs_shankprof, data_shankprof] = plotRankedShankProfile(summaryTable, animals_shankprof, condA_shankprof, condB_shankprof, ...
+[figs_shankprof, data_shankprof] = NNx_plotRankedShankProfile(summaryTable, animals_shankprof, condA_shankprof, condB_shankprof, ...
     rankfield_shankprof, features_shankprof, region_shankprof, trialfilter_shankprof, do_stats_shankprof, normto_shankprof);
 
 
 
-%% Data Visualization: Ranked shank rows, multi-animal (plotRankedShankRows)
+%% Data Visualization: Ranked shank rows, multi-animal (NNx_plotRankedShankRows)
 %one figure per feature: shank scores of the ranking label on top, then condA (or condB - condA)
 %heatmaps with a normalized line across each row
 
@@ -365,16 +365,16 @@ scorenorm_shankrowprof = 0;
     % 0 = raw scores
     % 1 = top shank = 1
 
-[figs_shankrowprof, data_shankrowprof] = plotRankedShankRows(summaryTable, animals_shankrowprof, condA_shankrowprof, condB_shankrowprof, rankfield_shankrowprof, ...
+[figs_shankrowprof, data_shankrowprof] = NNx_plotRankedShankRows(summaryTable, animals_shankrowprof, condA_shankrowprof, condB_shankrowprof, rankfield_shankrowprof, ...
     features_shankrowprof, region_shankrowprof, trialfilter_shankrowprof, do_stats_shankrowprof, normto_shankrowprof, scorenorm_shankrowprof);
 
 
 
-%% Data Visualization: Shank distance vs condition difference, multi-animal (plotShankDistance_ConditionCompare)
-%will be fixed later - plotShankDistance_ConditionCompare.m is a script, not a function, and its first
+%% Data Visualization: Shank distance vs condition difference, multi-animal (NNx_plotShankDistance_ConditionCompare)
+%will be fixed later - NNx_plotShankDistance_ConditionCompare.m is a script, not a function, and its first
 %section still loads its own hardcoded csvs into summaryTable (it would overwrite the one from Setup)
 %and its settings section resets everything set here. Until then, open it and run it there:
-%   edit plotShankDistance_ConditionCompare
+%   edit NNx_plotShankDistance_ConditionCompare
 %
 % %How many channels down the alignment peak shank? (rows of the figure)
 % maxdepth = 3;
@@ -389,4 +389,4 @@ scorenorm_shankrowprof = 0;
 % %Save the figure as a PNG (+ a txt with the run info)?
 % save_png = false;
 %
-% run('plotShankDistance_ConditionCompare.m') %uses summaryTable from Setup; dialogs ask for animals, conditions, features
+% run('NNx_plotShankDistance_ConditionCompare.m') %uses summaryTable from Setup; dialogs ask for animals, conditions, features

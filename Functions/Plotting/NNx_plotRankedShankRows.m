@@ -1,6 +1,6 @@
-% plotRankedShankRows.m
+% NNx_plotRankedShankRows.m
 %
-% Description: Companion of plotRankedShankProfile.m (same arguments, same re-centring):
+% Description: Companion of NNx_plotRankedShankProfile.m (same arguments, same re-centring):
 %   for the chosen animals, the shanks of each animal are re-centred on its top-ranked shank
 %   for a chosen shank label (ShankRank_<score> == 1): that shank is column 3, its
 %   neighbouring shanks are columns 1-2 (left) and 4-5 (right). Rows are Chan_Depth
@@ -8,7 +8,7 @@
 %   (measure column), a 4 x 1 tiled layout:
 %     tile 1: line plot, one line per animal, of the chosen label's shank scores from
 %       ProbeInfo.ShankLabels (the values of the shank activity plots of
-%       NNx_editProbeInfo_ChLabel_SponData.m / plotProbeLabels.m) for the 5 aligned shanks;
+%       NNx_editProbeInfo_ChLabel_SponData.m / NNx_plotProbeLabels.m) for the 5 aligned shanks;
 %       with scorenorm, each animal's scores divided by its top shank's score (top = 1)
 %     tiles 2-4: heatmap (5 columns x rows) of the mean over animals of each animal's
 %       per-position mean over trials: condition A alone (green), or B - A (each animal's
@@ -35,7 +35,7 @@
 %
 % Inputs:
 %   summaryTable (table, or char/string path to its csv) - tableres from
-%     SummaryAnalysis_MultiMouse_allChannels.m, one row per good trial x channel. Columns used:
+%     NNx_SummaryAnalysis_MultiMouse_allChannels.m, one row per good trial x channel. Columns used:
 %       Animal_Name, Condition_Name, Region (text)
 %       Chan_Shank (double) - shank (ProbeMaps column) of the channel
 %       Chan_Depth (double) - position among that shank's kept channels, 1 = top; NaN rows dropped
@@ -90,13 +90,13 @@
 %     .p, .sig (rows x 5) - rank-sum p-values per cell (NaN = not tested) and significance
 %       after FDR (empty without statistics)
 %
-% Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable, including its
+% Dependencies: NNx_SummaryAnalysis_MultiMouse_allChannels.m for summaryTable, including its
 %   separate section that adds Chan_Shank / Chan_Depth / ShankRank_<score>; ProbeInfo.ShankLabels
 %   from NNx_editProbeInfo_ChLabel_SponData.m / NNx_editProbeInfo_ChLabel_StimData.m. Same arguments
-%   and re-centring as plotRankedShankProfile.m. MATLAB R2019b+ (tiledlayout); Statistics and
+%   and re-centring as NNx_plotRankedShankProfile.m. MATLAB R2019b+ (tiledlayout); Statistics and
 %   Machine Learning Toolbox (ranksum) for do_stats.
 
-function [figs, data] = plotRankedShankRows(summaryTable, animals, condA, condB, rankfield, features, region, trialfilter, do_stats, normto, scorenorm)
+function [figs, data] = NNx_plotRankedShankRows(summaryTable, animals, condA, condB, rankfield, features, region, trialfilter, do_stats, normto, scorenorm)
 
 figs = gobjects(1,0);
 data = struct([]);
@@ -247,13 +247,13 @@ topshank = NaN(1,numel(animals));
 for a = 1:numel(animals)
     missingc = usedconds(~arrayfun(@(c) any(T.Animal_Name == animals(a) & T.Condition_Name == c), usedconds));
     if ~isempty(missingc)
-        warning('plotRankedShankRows: %s has no rows for condition(s) %s (%s) - left out', animals(a), strjoin(missingc,', '), region)
+        warning('NNx_plotRankedShankRows: %s has no rows for condition(s) %s (%s) - left out', animals(a), strjoin(missingc,', '), region)
         continue
     end
     s1 = unique(T.Chan_Shank(T.Animal_Name == animals(a) & T.(rankfield) == 1));
     s1 = s1(~isnan(s1));
     if isempty(s1)
-        warning('plotRankedShankRows: %s has no shank with %s == 1 (%s) - left out', animals(a), rankfield, region)
+        warning('NNx_plotRankedShankRows: %s has no shank with %s == 1 (%s) - left out', animals(a), rankfield, region)
     else
         topshank(a) = min(s1);
     end
@@ -270,7 +270,7 @@ T = T(T.col >= 1 & T.col <= 5 & ~isnan(T.Chan_Depth), :);
 nrow = max(T.Chan_Depth);
 na = numel(animals);
 
-%colour maps as in plotLWIntensityCompare.m; one line colour per animal
+%colour maps as in NNx_plotLWIntensityCompare.m; one line colour per animal
 greenmap = interp1([0 0.5 1],[0.95 0.98 0.93; 0.55 0.82 0.40; 0.18 0.60 0.22],linspace(0,1,256));
 divmap = interp1([0 0.5 1],[0.13 0.40 0.75; 1 1 1; 0.80 0.15 0.15],linspace(0,1,256));
 acol = lines(na);
@@ -285,7 +285,7 @@ scores = NaN(na,5);
 for a = 1:na
     pf = fullfile(probeinfo_dir, animals(a) + "-ProbeInfo.mat");
     if ~isfile(pf)
-        warning('plotRankedShankRows: %s not found - no shank score line for %s', pf, animals(a))
+        warning('NNx_plotRankedShankRows: %s not found - no shank score line for %s', pf, animals(a))
         continue
     end
     pinfo = load(pf,'ProbeInfo');
@@ -300,7 +300,7 @@ for a = 1:na
     end
     if numel(prb) ~= 1 || ~isfield(PI,'ShankLabels') || numel(PI.ShankLabels) < prb ...
             || ~isstruct(PI.ShankLabels{prb}) || ~isfield(PI.ShankLabels{prb}, scorename)
-        warning('plotRankedShankRows: %s has no ShankLabels score %s for region %s - no shank score line', animals(a), scorename, region)
+        warning('NNx_plotRankedShankRows: %s has no ShankLabels score %s for region %s - no shank score line', animals(a), scorename, region)
         continue
     end
     sc = double(PI.ShankLabels{prb}.(scorename)(:)');

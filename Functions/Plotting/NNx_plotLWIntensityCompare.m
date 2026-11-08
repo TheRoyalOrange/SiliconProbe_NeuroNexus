@@ -1,4 +1,4 @@
-% plotLWIntensityCompare.m
+% NNx_plotLWIntensityCompare.m
 %
 % Description: Question-specific plot comparing light-only (L) and light+whisker (LW)
 %   responses across light intensities, per channel on the probe map, next to the
@@ -7,7 +7,7 @@
 %   ProbeInfo.Areas and used to index ProbeMaps, Ch_Remove and the Shank/Chan labels)
 %   and which data features (measure columns of the summary table) to plot, then makes one figure
 %   per feature, a 5 x 3 tiled layout:
-%     row 1: activity labels from ProbeInfo, drawn by plotProbeLabels.m (shank line +
+%     row 1: activity labels from ProbeInfo, drawn by NNx_plotProbeLabels.m (shank line +
 %       channel heatmap, same colours as there): (1,1) spontaneous label, (1,2) and (1,3) two
 %       stimulus activity scores chosen by the user (recommended: light only, whisker only)
 %     rows 2-5: channel heatmaps of the feature for 4, 8, 12 and 15 (light intensity):
@@ -30,7 +30,7 @@
 % Inputs:
 %   animal (char/string) - animal ID, as in summaryTable.Animal_Name and <animal>-ProbeInfo.mat
 %   summaryTable (table, or char/string path to its csv) - tableres from
-%     SummaryAnalysis_MultiMouse_allChannels.m (or a single-type all-channels script), one row
+%     NNx_SummaryAnalysis_MultiMouse_allChannels.m (or a single-type all-channels script), one row
 %     per good trial x channel. Columns used:
 %       Animal_Name, Region, Condition_Name (text), Channel_ID (double)
 %       measure columns named <P1|P2|All>_<LFP|MUA|TF>... (double) - the features offered
@@ -66,12 +66,12 @@
 %     <animal>_<area>_LvsLW, or the name entered under Edit Folder Name (created if missing).
 %     <area> is the probe's name in ProbeInfo.Areas (also when region is given as a probe number)
 %
-% Dependencies: plotProbeLabels.m (same folder); SummaryAnalysis_MultiMouse_allChannels.m
+% Dependencies: NNx_plotProbeLabels.m (same folder); NNx_SummaryAnalysis_MultiMouse_allChannels.m
 %   (or the single-type all-channels scripts) for summaryTable; NNx_editProbeInfo_ChLabel_SponData.m /
 %   NNx_editProbeInfo_ChLabel_StimData.m for the labels. MATLAB R2020b+ (nested tiledlayout);
 %   Statistics and Machine Learning Toolbox (ranksum).
 
-function figs = plotLWIntensityCompare(animal, summaryTable, region, features, stimlabels, do_stats, save_png)
+function figs = NNx_plotLWIntensityCompare(animal, summaryTable, region, features, stimlabels, do_stats, save_png)
 
 figs = gobjects(1,0);
 animal = char(animal);
@@ -171,7 +171,7 @@ if save_png
                     foldername = strtrim(answer{1}); %checked again by the while condition
                 end
             otherwise %Quit, or the dialog was closed
-                error('plotLWIntensityCompare: stopped by the user (output folder %s already exists)', fullfile(savebase, foldername))
+                error('NNx_plotLWIntensityCompare: stopped by the user (output folder %s already exists)', fullfile(savebase, foldername))
         end
     end
     savedir = fullfile(savebase, foldername);
@@ -222,7 +222,7 @@ end
 row1name = ["spontaneous (Spon)","column 2 stimulus","column 3 stimulus"];
 fprintf('%s (%s, probe %d) row-1 labels: %s\n', animal, areaname, prb, strjoin(fillmissing(row1lab,'constant',"none"),', '))
 
-%colour maps: green as plotProbeLabels' stimulus-driven labels; diverging blue-white-red for LW - L
+%colour maps: green as NNx_plotProbeLabels' stimulus-driven labels; diverging blue-white-red for LW - L
 greenmap = interp1([0 0.5 1],[0.95 0.98 0.93; 0.55 0.82 0.40; 0.18 0.60 0.22],linspace(0,1,256));
 divmap = interp1([0 0.5 1],[0.13 0.40 0.75; 1 1 1; 0.80 0.15 0.15],linspace(0,1,256));
 
@@ -258,14 +258,14 @@ for fi = 1:numel(features)
     tl = tiledlayout(figs(end),5,3,'TileSpacing','compact','Padding','compact');
     title(tl,ttl,'Interpreter','none');
 
-    %row 1: activity labels, drawn by plotProbeLabels into tiles 1-3
+    %row 1: activity labels, drawn by NNx_plotProbeLabels into tiles 1-3
     for c = 1:3
         if ismissing(row1lab(c))
             ax = nexttile(tl,c);
             text(ax,0.5,0.5,sprintf('no %s label\nin ProbeInfo',row1name(c)),'Units','normalized','HorizontalAlignment','center');
             axis(ax,'off');
         else
-            plotProbeLabels(ProbeInfo, prb, row1lab(c), tl, c);
+            NNx_plotProbeLabels(ProbeInfo, prb, row1lab(c), tl, c);
         end
     end
 

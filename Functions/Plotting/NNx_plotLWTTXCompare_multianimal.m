@@ -1,6 +1,6 @@
-% plotLWTTXCompare_multianimal.m
+% NNx_plotLWTTXCompare_multianimal.m
 %
-% Description: TTX experiment version of plotLWIntensityCompare_multianimal.m. Compares
+% Description: TTX experiment version of NNx_plotLWIntensityCompare_multianimal.m. Compares
 %   light-only (L) and light+whisker (LW) responses at 8 uW before and with TTX, for several
 %   animals, from the summary table. Each animal's shanks are re-centred on its top-ranked
 %   shank for an alignment label (ShankRank_<alignlabel> == 1; chosen in a dialog if
@@ -46,7 +46,7 @@
 %   A condition without rows for any chosen animal gives an all-black "No Data" tile (also
 %   in the ratio / comparison tiles that use it); animals missing a condition simply do not
 %   contribute to it. Every heatmap gives n = animals with data per column under its
-%   columns. Optional trial filter as in plotRankedShankRows.m. The condition names, alpha,
+%   columns. Optional trial filter as in NNx_plotRankedShankRows.m. The condition names, alpha,
 %   use_fdr, min_trials, min_animals, maxdepth and the paths are set at the top of the
 %   function. The figure title is short, "<region> Response to L vs LW with TTX: <feature>
 %   (n = <animals>)"; the run information (table, conditions, alignment, animals and top
@@ -54,10 +54,10 @@
 %   save_png, in a .txt file next to the PNG. Returns figure handles and the plotted
 %   numbers; nothing is printed.
 %
-% Inputs (same order as plotLWIntensityCompare_multianimal.m):
+% Inputs (same order as NNx_plotLWIntensityCompare_multianimal.m):
 %   animals (string array, optional) - Animal_Name values; omitted/empty = list dialog (multiple)
 %   summaryTable (table, or char/string path to its csv) - tableres from
-%     SummaryAnalysis_MultiMouse_allChannels.m, one row per good trial x channel. Columns used:
+%     NNx_SummaryAnalysis_MultiMouse_allChannels.m, one row per good trial x channel. Columns used:
 %       Animal_Name, Condition_Name, Region (text)
 %       Chan_Shank (double) - shank (ProbeMaps column) of the channel
 %       Chan_Depth (double) - position among that shank's kept channels, 1 = top; NaN rows dropped
@@ -120,14 +120,14 @@
 %   with save_png: <savebase>\<name>_<feature>.png (150 dpi) and <name>_<feature>.txt (data.info),
 %     one pair per feature (savebase = E:\Roy\Processed Silicon Probe Data\BundledAnimalData\MultAnimal)
 %
-% Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable, including its
+% Dependencies: NNx_SummaryAnalysis_MultiMouse_allChannels.m for summaryTable, including its
 %   separate section that adds Chan_Shank / Chan_Depth / ShankRank_<score>; ProbeInfo labels
 %   from NNx_editProbeInfo_ChLabel_SponData.m / NNx_editProbeInfo_ChLabel_StimData.m. Same layout
-%   ideas and helpers as plotLWIntensityCompare_multianimal.m; heatmaps and statistics as
-%   plotRankedShankRows.m. MATLAB R2020b+ (nested tiledlayout); Statistics and Machine
+%   ideas and helpers as NNx_plotLWIntensityCompare_multianimal.m; heatmaps and statistics as
+%   NNx_plotRankedShankRows.m. MATLAB R2020b+ (nested tiledlayout); Statistics and Machine
 %   Learning Toolbox (ranksum, ttest).
 
-function [figs, data] = plotLWTTXCompare_multianimal(animals, summaryTable, region, features, ...
+function [figs, data] = NNx_plotLWTTXCompare_multianimal(animals, summaryTable, region, features, ...
     stimlabels, do_stats, save_png, alignlabel, rowlines, trialfilter)
 
 figs = gobjects(1,0);
@@ -260,7 +260,7 @@ for a = 1:numel(animals)
     s1 = unique(T.Chan_Shank(T.Animal_Name == animals(a) & T.(rankfield) == 1));
     s1 = s1(~isnan(s1));
     if isempty(s1)
-        warning('plotLWTTXCompare_multianimal: %s has no shank with %s == 1 (%s) - left out', animals(a), rankfield, region)
+        warning('NNx_plotLWTTXCompare_multianimal: %s has no shank with %s == 1 (%s) - left out', animals(a), rankfield, region)
     else
         topshank(a) = min(s1);
     end
@@ -286,7 +286,7 @@ if save_png
         'Folder: %s\nWith this name: %s_%s.png'], savebase, savename, features(1));
     answer = inputdlg(namehelp, 'Save PNGs', [1 80], {savename});
     if isempty(answer) || isempty(strtrim(answer{1}))
-        error('plotLWTTXCompare_multianimal: stopped by the user (no file name)')
+        error('NNx_plotLWTTXCompare_multianimal: stopped by the user (no file name)')
     end
     savename = strtrim(answer{1});
     %if any file exists: Overwrite (same-name files are replaced), Quit, or Edit Name (checked again)
@@ -308,7 +308,7 @@ if save_png
                     savename = strtrim(answer{1}); %checked again by the loop
                 end
             otherwise %Quit, or the dialog was closed
-                error('plotLWTTXCompare_multianimal: stopped by the user (files named %s_<feature> already exist)', savename)
+                error('NNx_plotLWTTXCompare_multianimal: stopped by the user (files named %s_<feature> already exist)', savename)
         end
     end
 end
@@ -323,7 +323,7 @@ labnames = strings(na,3); %label name used for each animal (the Spon label can d
 for a = 1:na
     pf = fullfile(probeinfo_dir, animals(a) + "-ProbeInfo.mat");
     if ~isfile(pf)
-        warning('plotLWTTXCompare_multianimal: %s not found - no activity labels for %s', pf, animals(a))
+        warning('NNx_plotLWTTXCompare_multianimal: %s not found - no activity labels for %s', pf, animals(a))
         continue
     end
     pinfo = load(pf,'ProbeInfo');
@@ -336,7 +336,7 @@ for a = 1:na
         end
     end
     if numel(prb) ~= 1
-        warning('plotLWTTXCompare_multianimal: %s has no probe for region %s - no activity labels', animals(a), region)
+        warning('NNx_plotLWTTXCompare_multianimal: %s has no probe for region %s - no activity labels', animals(a), region)
         continue
     end
     pmap = PI.ProbeMaps{prb};
@@ -360,7 +360,7 @@ for a = 1:na
     for L = 1:3
         lab = char(labnames(a,L));
         if ~isfield(SL,lab)
-            warning('plotLWTTXCompare_multianimal: %s has no ShankLabels score %s - left out of that label', animals(a), lab)
+            warning('NNx_plotLWTTXCompare_multianimal: %s has no ShankLabels score %s - left out of that label', animals(a), lab)
             continue
         end
         sc = double(SL.(lab)(:)');
@@ -407,7 +407,7 @@ for L = 1:3
     labres(L).n = sum(hasval, 1);
 end
 
-%colour maps (plotProbeLabels.m / plotLWIntensityCompare.m); one line colour per animal
+%colour maps (NNx_plotProbeLabels.m / NNx_plotLWIntensityCompare.m); one line colour per animal
 orangemap = interp1([0 0.5 1],[1.00 0.96 0.90; 1.00 0.62 0.15; 0.92 0.38 0.00],linspace(0,1,256));
 greenmap = interp1([0 0.5 1],[0.95 0.98 0.93; 0.55 0.82 0.40; 0.18 0.60 0.22],linspace(0,1,256));
 divmap = interp1([0 0.5 1],[0.13 0.40 0.75; 1 1 1; 0.80 0.15 0.15],linspace(0,1,256));
@@ -521,7 +521,7 @@ for fi = 1:numel(features)
     %short figure title; the run information goes to data.info (and to the .txt file with save_png)
     ttl = sprintf('%s Response to L vs LW with TTX: %s (n = %d)', region, feat, na);
     info = string(ttl); %#ok<*AGROW> (info grows line by line, a dozen lines)
-    info(end+1) = "created " + string(datetime('now','Format','yyyy-MM-dd HH:mm')) + " by plotLWTTXCompare_multianimal";
+    info(end+1) = "created " + string(datetime('now','Format','yyyy-MM-dd HH:mm')) + " by NNx_plotLWTTXCompare_multianimal";
     info(end+1) = "summary table: " + tablesource;
     info(end+1) = sprintf('region %s; conditions %s (8 uW, before and with TTX)', region, strjoin(conds,', '));
     info(end+1) = sprintf('aligned on each animal''s top %s shank (column "top"); rows = Chan_Depth 1-%d', alignlabel, maxdepth);

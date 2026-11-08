@@ -1,8 +1,8 @@
-% itpc_singleAnimalCompareconditions.m
+% NNx_itpc_singleAnimalCompareconditions.m
 %
 % Description: For one animal, loads the saved ITPC results of two
 %   conditions (one file per condition, from the save line at the bottom of
-%   ITPC_PhaseReset_singleanimal.m), takes the difference condition 1 minus
+%   NNx_ITPC_PhaseReset_singleanimal.m), takes the difference condition 1 minus
 %   condition 2 of the measure you pick (ITPC, Rayleigh Z or 2nd-harmonic
 %   ITPC), and plots that difference as a time-frequency map per channel in
 %   the probe layout, one figure per probe. With sig_only = 1 the
@@ -22,7 +22,7 @@
 %     .ProbeMaps (cell, 1 x probenum) - 2D [depth rows x shanks] matrix of
 %       raw channel IDs; columns = shanks
 %   one ITPC results .mat per condition (picked with uipickfiles), saved by
-%     ITPC_PhaseReset_singleanimal.m, containing:
+%     NNx_ITPC_PhaseReset_singleanimal.m, containing:
 %     itpc_lfp (single, nch x nfrex x ntime) - ITPC, 0-1
 %     itpc2_lfp (single, nch x nfrex x ntime) - 2nd-harmonic ITPC, 0-1
 %     rayleighZ_lfp (single, nch x nfrex x ntime) - ntrials * ITPC^2
@@ -54,7 +54,7 @@
 %   report (struct) - files used, estimated trial count per condition
 %     (rayleighZ / itpc^2), notes; shown in the last section
 %
-% Dependencies: ITPC_PhaseReset_singleanimal.m (results files, with its
+% Dependencies: NNx_ITPC_PhaseReset_singleanimal.m (results files, with its
 %   save line), ProbeInfo from NNx_BaseAnalysis.m,
 %   uipickfiles.m, Signal Processing Toolbox (bandpass, only if erp_band
 %   is set).
@@ -90,7 +90,7 @@ sig_only = 0;
     % 1 = blank (NaN) everything outside the reference condition's Rayleigh p < sig_p (outlined in grey)
 sig_p = 0.05; %per point, uncorrected (same as the section 10b plot in the ITPC script)
 
-%%%ITPC run settings (copy these from section 1 of ITPC_PhaseReset_singleanimal.m, the files don't store them)%%%
+%%%ITPC run settings (copy these from section 1 of NNx_ITPC_PhaseReset_singleanimal.m, the files don't store them)%%%
 frex = 1:1:80; %Hz
 time_ms = [-1000 1000]; %ms re: stim
 pad_ms = 1500; %ms
@@ -390,7 +390,7 @@ while ishsokay == 0
 end
 
 %% run report
-disp('===== itpc_singleAnimalCompareconditions run report =====')
+disp('===== NNx_itpc_singleAnimalCompareconditions run report =====')
 for c = 1:2
     disp([condnames{c} ': ~' num2str(report.ntrials(c)) ' trials, file ' report.files{c}])
 end

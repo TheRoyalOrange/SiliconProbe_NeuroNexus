@@ -1,4 +1,4 @@
-% ManifoldPCA_LvsLW.m
+% NNx_ManifoldPCA_LvsLW.m
 %
 % Description: quick look at the population response in light alone (L) vs light + whisker (LW), for
 %   the channels of one probe (region, e.g. V1). Every trial you pick is drawn as a line through PC
@@ -6,7 +6,7 @@
 %   as light intensity goes up (the order you list the conditions in). One column per signal. All four
 %   signals are made from the LFP files:
 %     LFP      - bandpassed LFP
-%     CSD      - inverse CSD of that LFP, per trial (CSD_flex.m), more local than the LFP
+%     CSD      - inverse CSD of that LFP, per trial (NNx_CSD_flex.m), more local than the LFP
 %     LFP_RMS  - moving RMS envelope of the LFP (how big the signal is, ignoring its sign and phase)
 %     CSD_RMS  - moving RMS envelope of the CSD
 %   (Spiking is commented out for now, the code is kept for later.)
@@ -65,14 +65,14 @@
 %   <probeinfo_dir>\<animal>-ProbeInfo.mat, ProbeInfo fields:
 %     .Areas (cell of char, 1 x probes) - region per probe; region picks the probe
 %     .ProbeMaps (cell, 1 x probes) - [rows x shanks] raw channel IDs, 0 = no site
-%     .ProbeIds (cell, 1 x probes) - raw channel IDs on the probe, the channel order CSD_flex.m expects.
+%     .ProbeIds (cell, 1 x probes) - raw channel IDs on the probe, the channel order NNx_CSD_flex.m expects.
 %       Must be the same channels as ProbeMaps or the script stops with an error (CSD signals only)
 %     .Ch_Remove (cell, 1 x probes) - raw channel IDs to leave out (can be shorter than probes, or empty)
-%   INFERRED DATA CONTRACTS (not stated in the files, same as LFPCorrelation_LvsLW.m):
+%   INFERRED DATA CONTRACTS (not stated in the files, same as NNx_LFPCorrelation_LvsLW.m):
 %     - stim onset is sample 5001 at 1 kHz (BaseAnalysis pre = 5 s)
 %     - channel index (dim 3) of the data = raw channel ID (true when ChanIds = 1:Chans)
 %     - Ch_Remove is indexed by probe number
-%     - ProbeMaps rows are equally spaced contacts in physical order along the shank (from CSD_flex.m)
+%     - ProbeMaps rows are equally spaced contacts in physical order along the shank (from NNx_CSD_flex.m)
 %   Not applied: tr_remove_conditional (extra exclusions from NNx_TrialRemove_Conditional_callable.m)
 %
 % Outputs (workspace; nothing saved unless plotsave / save_csv):
@@ -148,7 +148,7 @@
 %   csv (save_csv = 1) - stats_win, you'll get a file name box
 %
 % Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); NNx_TrialRemove_Conditional(_callable).m
-%   (tr_remove mask format); CSD_flex.m (Functions\Analysis folder, CSD signals); uipickfiles.m;
+%   (tr_remove mask format); NNx_CSD_flex.m (Functions\Analysis folder, CSD signals); uipickfiles.m;
 %   Statistics Toolbox (pca, signrank, fitlme); Signal Processing Toolbox (butter, zp2sos, filtfilt,
 %   envelope); MATLAB R2019b+ (tiledlayout).
 %
@@ -218,13 +218,13 @@ znorm = 1;
 %norm_soft = 5; %MUA only, spikes/s added to the SD so near-silent channels don't get blown up. Spiking off for now
 
 %LFP cleanup
-lfp_band = [2 100]; %Hz, zero-phase Butterworth bandpass (same as LFPCorrelation_LvsLW.m). A lower highpass rings further back into the baseline
+lfp_band = [2 100]; %Hz, zero-phase Butterworth bandpass (same as NNx_LFPCorrelation_LvsLW.m). A lower highpass rings further back into the baseline
 filt_pad_ms = 1000; %ms of extra data on each side for the filter to settle
 
 %RMS envelope
 rms_win_ms = 25; %ms, moving RMS window (same as the summary script)
 
-%inverse CSD (CSD_flex.m, same numbers as ITPC_PhaseReset_singleanimal.m)
+%inverse CSD (NNx_CSD_flex.m, same numbers as NNx_ITPC_PhaseReset_singleanimal.m)
 csd_spacing_um = 100; %distance between adjacent ProbeMaps rows, um
 csd_radius_um = 300; %lateral radius of the active column of tissue, um (not the contact size)
 csd_conductivity = 0.3; %extracellular conductivity, S/m
@@ -365,10 +365,10 @@ end
 
 %% Data Extraction: each animal's probe and kept channels (ProbeInfo)
 
-pinfos = cell(1,nmice); %each animal's ProbeInfo, CSD_flex needs it
+pinfos = cell(1,nmice); %each animal's ProbeInfo, NNx_CSD_flex needs it
 mouseProbe = zeros(1,nmice); %probe index used per animal
 chanlist = cell(1,nmice); %column of kept raw channel IDs (sorted)
-csdorder = cell(1,nmice); %where each channel in CSD_flex's order sits in chanlist
+csdorder = cell(1,nmice); %where each channel in NNx_CSD_flex's order sits in chanlist
 for m = 1:nmice
     pf = fullfile(probeinfo_dir, mice(m) + "-ProbeInfo.mat");
     if isfile(pf) == false
@@ -390,12 +390,12 @@ for m = 1:nmice
     end
     chanlist{m} = setdiff(nonzeros(pinfos{m}.ProbeMaps{prb}), chremove(:)); %sorted column of raw channel IDs
 
-    %CSD_flex wants channels in ProbeIds order, so work out how to get there and back
+    %NNx_CSD_flex wants channels in ProbeIds order, so work out how to get there and back
     if needCSD == true
         pids = pinfos{m}.ProbeIds{prb}(:);
-        pids = pids(ismember(pids,chremove(:)) == false); %ProbeIds minus Ch_Remove, CSD_flex's order
+        pids = pids(ismember(pids,chremove(:)) == false); %ProbeIds minus Ch_Remove, NNx_CSD_flex's order
         if isequal(sort(pids),chanlist{m}) == false
-            error([char(mice(m)) ': ProbeIds and ProbeMaps of probe ' num2str(prb) ' list different channels, so I can''t run CSD_flex'])
+            error([char(mice(m)) ': ProbeIds and ProbeMaps of probe ' num2str(prb) ' list different channels, so I can''t run NNx_CSD_flex'])
         end
         [~,csdorder{m}] = ismember(pids,chanlist{m});
     end
@@ -457,7 +457,7 @@ for con = 1:ncond
         %inverse CSD of the bandpassed LFP, trial by trial and shank by shank. NaN on shanks with too few channels
         if needCSD == true
             csdflt = nan(ntr,nsamp,nch);
-            csdflt(:,:,csdorder{m}) = CSD_flex(lfpflt(:,:,csdorder{m}), pinfos{m}, mouseProbe(m), 'ChRemove', true, ...
+            csdflt(:,:,csdorder{m}) = NNx_CSD_flex(lfpflt(:,:,csdorder{m}), pinfos{m}, mouseProbe(m), 'ChRemove', true, ...
                 'spacing', csd_spacing_um, 'radius', csd_radius_um, 'conductivity', csd_conductivity, 'minchans', csd_min_chans);
         end
 
@@ -901,7 +901,7 @@ end
 %% Data Analysis: mixed model of path length across animals
 
 %does LW change path length overall, treating animals as a sample of mice? Each animal gets its own baseline and
-%its own LW effect, as in LFPCorrelation_LvsLW.m: log(path) ~ Group (+ Pair) + (1 + Group|Animal). Log, so the
+%its own LW effect, as in NNx_LFPCorrelation_LvsLW.m: log(path) ~ Group (+ Pair) + (1 + Group|Animal). Log, so the
 %effect is a ratio (LW/L), and animals with bigger PC units don't count for more. Uses the bar plot's numbers.
 %with few animals this is shaky: there's not much to estimate each animal's own LW effect from
 stats_path_lme = table();

@@ -1,4 +1,4 @@
-% SummaryAnalysis_MultiMouse_allChannels.m
+% NNx_SummaryAnalysis_MultiMouse_allChannels.m
 %
 % Description: Combined all-channels summary of LFP, MUA and time-frequency (TF)
 %   responses across mice and conditions, in one long-format table (one row per

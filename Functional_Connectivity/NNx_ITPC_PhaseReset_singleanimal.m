@@ -1,4 +1,4 @@
-% ITPC_PhaseReset_singleanimal.m
+% NNx_ITPC_PhaseReset_singleanimal.m
 %
 % Description: For one animal and every probe in the recording (or the
 %   ones listed in regions), pools peri-stimulus LFP trials from a
@@ -12,7 +12,7 @@
 %     3. picks the ref_condition LFP files (uipickfiles), works out the
 %        kept trials per file and loads their LFP segment for every
 %        analysed channel
-%     4 / 4b. OFF: per-trial inverse CSD via CSD_flex.m and its plot
+%     4 / 4b. OFF: per-trial inverse CSD via NNx_CSD_flex.m and its plot
 %     5. 0.5-150 Hz bandpass (lfp_bp_hz) then complex Morlet wavelet on
 %        lfp_ref (method from the NNx_BaseAnalysis.m TF
 %        section, cycles range_cycles, max(abs()) normalisation): phase per
@@ -158,7 +158,7 @@
 %   NNx_editProbeInfo_ChRemove.m (Ch_Remove), uipickfiles.m,
 %   Signal Processing Toolbox (bandpass); optional
 %   NNx_TrialRemove_Conditional_callable.m (tr_remove_conditional).
-%   OFF sections also need CSD_flex.m (Functions\Analysis, must be on the Matlab path) and slanCM.m.
+%   OFF sections also need NNx_CSD_flex.m (Functions\Analysis, must be on the Matlab path) and slanCM.m.
 
 %% 1 PARAMETERS
 animal = '20261011-p7';
@@ -177,7 +177,7 @@ onset_idx = 5001; %stimulus onset sample in stim_lfp_stimchunks
 
 tr_conditional_names = {}; %e.g. {'whisker_twitch_artifact'}; extra trial exclusions
 
-%inverse CSD (CSD_flex.m; defaults = the CSDallshank call in NNx_BaseAnalysis.m)
+%inverse CSD (NNx_CSD_flex.m; defaults = the CSDallshank call in NNx_BaseAnalysis.m)
 %CSD is off for now (LFP only), so these are parked too
 %csd_spacing_um = 100; %distance between adjacent ProbeMaps rows, um
 %csd_radius_um = 300; %lateral radius of the active column of tissue, um (not the contact size: contacts are 177 um^2 in area, NeuroNexus catalog A8x8-Edge-5mm-100-200-177)
@@ -377,10 +377,10 @@ report.ntrials = size(lfp_ref,1);
 %CSD switched off 2026-11-02: sticking to the LFP for now. Code kept for later, just take away the %{ %} around it
 %{
 %lfp_ref holds chansuse (Ch_Remove already dropped), so 'ChRemove' is true
-[csd_ref, report.csd] = CSD_flex(lfp_ref, ProbeInfo, prb, 'ChRemove', true, ...
+[csd_ref, report.csd] = NNx_CSD_flex(lfp_ref, ProbeInfo, prb, 'ChRemove', true, ...
     'spacing', csd_spacing_um, 'radius', csd_radius_um, 'conductivity', csd_conductivity, 'minchans', csd_min_chans);
 if ~isequal(report.csd.chan_ids, chansuse)
-    error('CSD_flex channel order does not match chansuse.');
+    error('NNx_CSD_flex channel order does not match chansuse.');
 end
 
 %}
@@ -913,7 +913,7 @@ for i = 1:height(cf)
     lfp2(rows,:,:) = double(S.stim_lfp_stimchunks(trial_table.trial(rows), seg_idx, chans2));
     clear S
 end
-csd2 = CSD_flex(lfp2, ProbeInfo, prb2, 'ChRemove', true, ...
+csd2 = NNx_CSD_flex(lfp2, ProbeInfo, prb2, 'ChRemove', true, ...
     'spacing', csd_spacing_um, 'radius', csd_radius_um, 'conductivity', csd_conductivity, 'minchans', csd_min_chans);
 
 %wavelets as in section 5 (same cycles per frequency: logspace of range_cycles over frex)

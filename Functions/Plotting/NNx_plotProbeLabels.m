@@ -1,4 +1,4 @@
-% plotProbeLabels.m
+% NNx_plotProbeLabels.m
 %
 % Description: Redraws the channel/shank activity-label plots of
 %   NNx_editProbeInfo_ChLabel_SponData.m and NNx_editProbeInfo_ChLabel_StimData.m from
@@ -27,7 +27,7 @@
 %   labelnames (string array, optional) - labels to plot; default = every label found for
 %     this probe in ShankLabels, ChanLabels and chLabels (in that order)
 %   parent (TiledChartLayout, optional) - draw into tiles of this layout instead of making new
-%     figures (used by plotLWIntensityCompare.m); each label gets a nested 4x1 layout there
+%     figures (used by NNx_plotLWIntensityCompare.m); each label gets a nested 4x1 layout there
 %   tiles (double, 1 x numel(labelnames), required with parent) - tile number of each label in parent
 %
 % Outputs:
@@ -38,7 +38,7 @@
 %   (write ProbeInfo.ChanLabels / ShankLabels); NNx_BaseAnalysis*.m (ProbeMaps);
 %   NNx_editProbeInfo_ChRemove.m (Ch_Remove).
 
-function figs = plotProbeLabels(ProbeInfo, prb, labelnames, parent, tiles)
+function figs = NNx_plotProbeLabels(ProbeInfo, prb, labelnames, parent, tiles)
 
 figs = gobjects(1,0);
 useparent = nargin >= 4 && ~isempty(parent);
@@ -59,11 +59,11 @@ else
     labelnames = string(labelnames);
 end
 if isempty(labelnames)
-    fprintf('plotProbeLabels: probe %d has no channel/shank labels - nothing to plot\n', prb);
+    fprintf('NNx_plotProbeLabels: probe %d has no channel/shank labels - nothing to plot\n', prb);
     return
 end
 if useparent
-    assert(nargin >= 5 && numel(tiles) == numel(labelnames), 'plotProbeLabels: give one tile number per label with parent')
+    assert(nargin >= 5 && numel(tiles) == numel(labelnames), 'NNx_plotProbeLabels: give one tile number per label with parent')
 end
 
 animal = '';
@@ -83,7 +83,7 @@ for L = 1:numel(labelnames)
     if isfield(SL,lab)
         shk = double(SL.(lab)(:)');
         if numel(shk) ~= nshnk
-            warning('plotProbeLabels: ShankLabels{%d}.%s has %d values but the probe has %d shanks - not plotted', prb, lab, numel(shk), nshnk)
+            warning('NNx_plotProbeLabels: ShankLabels{%d}.%s has %d values but the probe has %d shanks - not plotted', prb, lab, numel(shk), nshnk)
             shk = [];
         end
     end
@@ -96,7 +96,7 @@ for L = 1:numel(labelnames)
     end
     if ~isempty(chm)
         if ~isequal(size(chm),size(pmap)) || ~isnumeric(chm)
-            warning('plotProbeLabels: channel label %s of probe %d is not a numeric %dx%d map - not plotted', lab, prb, nrow, nshnk)
+            warning('NNx_plotProbeLabels: channel label %s of probe %d is not a numeric %dx%d map - not plotted', lab, prb, nrow, nshnk)
             chm = [];
         else
             chm = double(chm);
@@ -104,7 +104,7 @@ for L = 1:numel(labelnames)
         end
     end
     if isempty(shk) && isempty(chm)
-        warning('plotProbeLabels: label "%s" not found for probe %d', lab, prb)
+        warning('NNx_plotProbeLabels: label "%s" not found for probe %d', lab, prb)
         continue
     end
 

@@ -1,4 +1,4 @@
-% plotShankDistance_ConditionCompare.m
+% NNx_plotShankDistance_ConditionCompare.m
 %
 % Description: Asks whether the distance between an animal's spontaneous-activity peak shank and
 %   its peak shank for an alignment label (e.g. LightOnly) changes the difference between two
@@ -9,7 +9,7 @@
 %                 number than, the spon peak; e.g. spon 6, LightOnly 4 -> +2). Negative allowed.
 %   Peaks: NaN scores ignored, ties -> lower shank number (same rule as the ShankRank_ columns).
 %   Data points: every trial of the two conditions on the channels at Chan_Depth 1..maxdepth of the
-%   alignment peak shank (the centre "top" column of the plotLWIntensityCompare_multianimal.m
+%   alignment peak shank (the centre "top" column of the NNx_plotLWIntensityCompare_multianimal.m
 %   heatmaps). One figure, a maxdepth x nFeatures tiled layout (rows = Chan_Depth 1..maxdepth,
 %   columns = features). x = shankdist (each integer in its range; tick label gives n animals with
 %   points in that tile). At each x: box and whisker of condition 1 (black, left) and condition 2
@@ -35,7 +35,7 @@
 %
 % Inputs:
 %   summaryTable (table, workspace variable, set by the user before running - this script does not
-%     make it) - tableres from SummaryAnalysis_MultiMouse_allChannels.m (or readtable of its csv,
+%     make it) - tableres from NNx_SummaryAnalysis_MultiMouse_allChannels.m (or readtable of its csv,
 %     or several of them stacked), one row per good trial x channel. Columns used:
 %       Animal_Name, Condition_Name, Region (text)
 %       Chan_Shank (double) - shank (ProbeMaps column) of the channel
@@ -44,13 +44,13 @@
 %       optional: Channel_ID, Trial, Condition_FileNum (copied into ptdata if present);
 %         ShankRank_<align> (double) - used only for the cross-check
 %   Settings section: maxdepth (3), sponlabel ("" = first ShankLabels field containing "Spon",
-%     as plotLWIntensityCompare_multianimal.m), probeinfo_dir, savebase, and
+%     as NNx_plotLWIntensityCompare_multianimal.m), probeinfo_dir, savebase, and
 %     save_png (logical) - true: also save the figure as a PNG (see Outputs); default false. Once
 %     the data points are gathered and before anything is plotted, a text box shows the whole
 %     default file name, n<animals>_<area>_<cond1>vs<cond2>_<align>Dist_<features>, to edit
 %     (Cancel stops the script). If the PNG or TXT already exists, a dialog offers Overwrite,
 %     Quit (stops with an error) or Edit Name (the new name is checked again). Closing it = Quit
-%     (as plotLWIntensityCompare_multianimal.m)
+%     (as NNx_plotLWIntensityCompare_multianimal.m)
 %     do_stats (logical, default true), alpha (0.05), use_fdr (true), min_trials (3) - statistics
 %   Dialogs: animals (multiple), region (only if more than one), the alignment label (ShankLabels
 %     fields shared by all chosen animals' ProbeInfo, LightOnly preselected), exactly 2 conditions
@@ -78,9 +78,9 @@
 %   with save_png: <savebase>\<name>.png (150 dpi) and <name>.txt (info)
 %     (savebase = E:\Roy\Processed Silicon Probe Data\BundledAnimalData\MultAnimal)
 %
-% Dependencies: SummaryAnalysis_MultiMouse_allChannels.m for summaryTable (including its section
+% Dependencies: NNx_SummaryAnalysis_MultiMouse_allChannels.m for summaryTable (including its section
 %   adding Chan_Shank / Chan_Depth); ProbeInfo.ShankLabels from NNx_editProbeInfo_ChLabel_SponData.m /
-%   NNx_editProbeInfo_ChLabel_StimData.m. Same alignment as plotLWIntensityCompare_multianimal.m.
+%   NNx_editProbeInfo_ChLabel_StimData.m. Same alignment as NNx_plotLWIntensityCompare_multianimal.m.
 %   MATLAB R2020b+ (tiledlayout legend tile); Statistics and Machine Learning Toolbox (quantile,
 %   fitlme, fitlm).
 
@@ -362,7 +362,7 @@ if save_png
     namehelp = sprintf('File name: <name>.png and <name>.txt\nFolder: %s', savebase);
     answer = inputdlg(namehelp, 'Save PNG', [1 80], {savename});
     if isempty(answer) || isempty(strtrim(answer{1}))
-        error('plotShankDistance_ConditionCompare: stopped by the user (no file name)')
+        error('NNx_plotShankDistance_ConditionCompare: stopped by the user (no file name)')
     end
     savename = strtrim(answer{1});
     %if a file exists: Overwrite (same-name files are replaced), Quit, or Edit Name (checked again)
@@ -384,7 +384,7 @@ if save_png
                     savename = strtrim(answer{1}); %checked again by the loop
                 end
             otherwise %Quit, or the dialog was closed
-                error('plotShankDistance_ConditionCompare: stopped by the user (%s.png / .txt already exist)', savename)
+                error('NNx_plotShankDistance_ConditionCompare: stopped by the user (%s.png / .txt already exist)', savename)
         end
     end
 end
@@ -393,7 +393,7 @@ end
 ttl = sprintf('%s: %s vs %s on the %s peak shank, by distance from the spon peak (n = %d)', ...
     region, conds(1), conds(2), alignlabel, numel(plotanimals));
 info = string(ttl);
-info(end+1) = "created " + string(datetime('now','Format','yyyy-MM-dd HH:mm')) + " by plotShankDistance_ConditionCompare";
+info(end+1) = "created " + string(datetime('now','Format','yyyy-MM-dd HH:mm')) + " by NNx_plotShankDistance_ConditionCompare";
 info(end+1) = "summary table: workspace variable summaryTable (" + height(summaryTable) + " rows)";
 info(end+1) = sprintf('region %s; conditions %s (black) vs %s (red); features %s', region, conds(1), conds(2), strjoin(features,', '));
 info(end+1) = sprintf('shank distance = spon peak shank - %s peak shank (+ = %s peak left of / lower shank number than the spon peak); peaks = highest ProbeInfo.ShankLabels score, ties -> lower shank', ...

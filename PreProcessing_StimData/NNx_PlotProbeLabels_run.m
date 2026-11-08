@@ -1,8 +1,8 @@
-% PlotProbeLabels_run.m
+% NNx_PlotProbeLabels_run.m
 %
 % Description: Plots the channel/shank activity labels saved in ProbeInfo (by
 %   NNx_editProbeInfo_ChLabel_SponData.m / NNx_editProbeInfo_ChLabel_StimData.m) for a list
-%   of mice, using plotProbeLabels.m: one figure per label and mouse, with the shank
+%   of mice, using NNx_plotProbeLabels.m: one figure per label and mouse, with the shank
 %   scores on top and the channel-score heatmap in the ProbeMaps layout below. The
 %   probe for each mouse is the one whose ProbeInfo.Areas matches its region (as in
 %   the summary scripts). Figures are not saved.
@@ -14,13 +14,13 @@
 %       one entry of that mouse's ProbeInfo.Areas (selects the probe)
 %     labelnames (string array) - labels to plot; empty = every label found for that probe
 %   E:\Roy\Processed Silicon Probe Data\ProbeInfo\<animal>-ProbeInfo.mat, per mouse
-%     (fields: see plotProbeLabels.m)
+%     (fields: see NNx_plotProbeLabels.m)
 %
 % Outputs:
 %   figs_labels (struct) - one field per mouse (valid field name of the animal ID), each the
-%     figure handles returned by plotProbeLabels
+%     figure handles returned by NNx_plotProbeLabels
 %
-% Dependencies: plotProbeLabels.m (Functions\Plotting, must be on the Matlab path); NNx_editProbeInfo_ChLabel_SponData.m /
+% Dependencies: NNx_plotProbeLabels.m (Functions\Plotting, must be on the Matlab path); NNx_editProbeInfo_ChLabel_SponData.m /
 %   NNx_editProbeInfo_ChLabel_StimData.m (write the labels into ProbeInfo).
 
 mice = {"20260423-p12"};
@@ -36,6 +36,6 @@ for m = 1:numel(mice)
     prb = find(strcmp(pinfo.ProbeInfo.Areas, region{m}));
     assert(numel(prb) == 1, '%s: region "%s" matches %d probes in ProbeInfo.Areas (need exactly 1)', ...
         mice{m}, region{m}, numel(prb))
-    figs_labels.(matlab.lang.makeValidName(char(mice{m}))) = plotProbeLabels(pinfo.ProbeInfo, prb, labelnames);
+    figs_labels.(matlab.lang.makeValidName(char(mice{m}))) = NNx_plotProbeLabels(pinfo.ProbeInfo, prb, labelnames);
 end
 clear pinfo

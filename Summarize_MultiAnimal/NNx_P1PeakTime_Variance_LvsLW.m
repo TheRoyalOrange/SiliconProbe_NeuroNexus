@@ -1,4 +1,4 @@
-% P1PeakTime_Variance_LvsLW.m
+% NNx_P1PeakTime_Variance_LvsLW.m
 %
 % Description: quick check of trial-to-trial jitter in the P1 peak time
 %   (proxy for how well trials line up) between Light and Light+Whisker.
@@ -12,12 +12,12 @@
 %   ("unit") so between-animal/channel latency differences don't inflate it,
 %   then units are compared paired (L vs LW).
 %   Optionally (heatplot) the spread is also drawn as the ranked-shank summary heatmaps
-%   (plotLWIntensityCompare/plotLWTTXCompare_multianimal), shanks centred on the top shank
+%   (NNx_plotLWIntensityCompare/NNx_plotLWTTXCompare_multianimal), shanks centred on the top shank
 %   of each shank label you pick (one figure per label), each cell = mean absolute deviation
 %   of the P1 peak time.
 %
 % Inputs:
-%   one or more csvs from SummaryAnalysis_MultiMouse_allChannels.m (one row per trial x channel),
+%   one or more csvs from NNx_SummaryAnalysis_MultiMouse_allChannels.m (one row per trial x channel),
 %   stacked into one table; they must have the same column names (any order), otherwise the
 %   script stops with an error. Columns used:
 %     P1_LFPPeakTime (double) - time of the negative LFP peak in the P1 window (75-350 ms),
@@ -42,7 +42,7 @@
 %     its animal x channel x condition; NaN with fewer than 2 peak trials
 %   (heatplot > 0) alignlabels (string, 1 x picks) - ShankRank_ labels chosen for alignment
 %   (heatplot > 0) heatfigs, heatdata (cell, 1 x alignlabels) - figure handles and plotted numbers
-%     returned by plotLWIntensityCompare_multianimal.m (heatplot 1) or plotLWTTXCompare_multianimal.m
+%     returned by NNx_plotLWIntensityCompare_multianimal.m (heatplot 1) or NNx_plotLWTTXCompare_multianimal.m
 %     (heatplot 2), one per alignment label; each heatmap cell = mean absolute deviation of P1 peak time, ms
 %   stats_paired also has the mixed model columns: lme_n_animals, lme_SDratio (SD_LW / SD_L estimated by
 %     fitlme (REML) on log(SD) ~ Cond (+ Pair for "all") + (1 + Cond|Animal) + (1|ChanKey); <1 = LW tighter),
@@ -57,9 +57,9 @@
 %     n Not Enough Trials channels
 %   (chanmaps == 1) chanmap_notes (string) - problems hit while drawing (missing ProbeInfo, unmapped channels)
 %
-% Dependencies: SummaryAnalysis_MultiMouse_allChannels.m csv output (heatmaps also need its
+% Dependencies: NNx_SummaryAnalysis_MultiMouse_allChannels.m csv output (heatmaps also need its
 %   Chan_Shank, Chan_Depth, Region and ShankRank_<label> columns, and each animal's ProbeInfo).
-%   plotLWIntensityCompare_multianimal.m / plotLWTTXCompare_multianimal.m for the heatmaps.
+%   NNx_plotLWIntensityCompare_multianimal.m / NNx_plotLWTTXCompare_multianimal.m for the heatmaps.
 %   <probeinfo_dir>\<animal>-ProbeInfo.mat (.Areas, .ProbeMaps) for the per-animal channel maps.
 %   Statistics Toolbox (vartestn, signrank, iqr, ranksum, fitlme). MATLAB R2022a+ (clim).
 %
@@ -99,8 +99,8 @@ rms_max = 1500; %area under the LFP rms envelope over the P1 window (uV*ms)
 %Want the ranked-shank summary heatmaps of the P1 peak time spread too?
 heatplot = 1;
     % 0 = no heatmaps
-    % 1 = intensity layout (plotLWIntensityCompare_multianimal: L/LW 4, 8, 12, 15)
-    % 2 = TTX layout (plotLWTTXCompare_multianimal: L/LW 8 with and without TTX)
+    % 1 = intensity layout (NNx_plotLWIntensityCompare_multianimal: L/LW 4, 8, 12, 15)
+    % 2 = TTX layout (NNx_plotLWTTXCompare_multianimal: L/LW 8 with and without TTX)
 %save the heatmaps as PNG (+ txt of run info) in the MultAnimal folder?
 save_heatpng = 0;
     % 0 = no
@@ -418,7 +418,7 @@ sgtitle('P1 peak time jitter: Light vs Light+Whisker')
 
 %% Data Visualization: ranked-shank heatmaps of P1 peak time spread
 
-%Same heatmaps as plotLWIntensityCompare/plotLWTTXCompare_multianimal, fed a per-trial spread column:
+%Same heatmaps as NNx_plotLWIntensityCompare/NNx_plotLWTTXCompare_multianimal, fed a per-trial spread column:
 %P1_LFPPeakTimeAbsDev = |peak time - median peak time| of that trial's animal x channel x condition.
 %The heatmaps average it per cell, so each cell = mean absolute deviation (ms, smaller = trials line up
 %better), and their per-cell LW vs L rank-sum test on it is a test of spread (same idea as Brown-Forsythe)
@@ -453,10 +453,10 @@ if heatplot > 0
     for k = 1:numel(alignlabels)
         disp(['Heatmaps: centring on ' char(alignlabels(k))])
         if heatplot == 1
-            [heatfigs{k}, heatdata{k}] = plotLWIntensityCompare_multianimal(heatanimals, tableres, [], "P1_LFPPeakTimeAbsDev", ...
+            [heatfigs{k}, heatdata{k}] = NNx_plotLWIntensityCompare_multianimal(heatanimals, tableres, [], "P1_LFPPeakTimeAbsDev", ...
                 [], true, save_heatpng == 1, alignlabels(k), true, []);
         elseif heatplot == 2
-            [heatfigs{k}, heatdata{k}] = plotLWTTXCompare_multianimal(heatanimals, tableres, [], "P1_LFPPeakTimeAbsDev", ...
+            [heatfigs{k}, heatdata{k}] = NNx_plotLWTTXCompare_multianimal(heatanimals, tableres, [], "P1_LFPPeakTimeAbsDev", ...
                 [], true, save_heatpng == 1, alignlabels(k), true, []);
         end
         set(heatfigs{k},'Name',"P1 spread, aligned on " + alignlabels(k)) %figure titles look the same, so label the windows

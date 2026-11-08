@@ -1,4 +1,4 @@
-% CSD_flex.m
+% NNx_CSD_flex.m
 %
 % Description: Inverse (delta) current source density along each shank of
 %   one probe, for every trial and time point at once. Same equation as
@@ -12,15 +12,15 @@
 %   for every contact, i.e. exactly CSDallshank.m. No plotting, no saving.
 %
 %   Usage:
-%     [csd, csdinfo] = CSD_flex(data, ProbeInfo, prb)                    %all probe channels
-%     [csd, csdinfo] = CSD_flex(data, ProbeInfo, prb, 'ChRemove', true)  %Ch_Remove already dropped
+%     [csd, csdinfo] = NNx_CSD_flex(data, ProbeInfo, prb)                    %all probe channels
+%     [csd, csdinfo] = NNx_CSD_flex(data, ProbeInfo, prb, 'ChRemove', true)  %Ch_Remove already dropped
 %
 % Inputs:
 %   data (double/single, trials x time x channels) - LFP in microvolts.
 %     Channel order INFERRED to match the pipeline:
 %       'ChRemove' false: data(:,:,k) = ProbeInfo.ProbeIds{prb}(k)
 %       'ChRemove' true:  same list with ProbeInfo.Ch_Remove{prb} dropped
-%                         (= chansuse in ITPC_PhaseReset_singleanimal.m)
+%                         (= chansuse in NNx_ITPC_PhaseReset_singleanimal.m)
 %     A single trial must still be 1 x time x channels.
 %   ProbeInfo (struct) - from NNx_BaseAnalysis.m; uses
 %     .ProbeIds{prb} (raw channel IDs on the probe), .Ch_Remove{prb} (raw
@@ -56,7 +56,7 @@
 % Dependencies: none (ProbeInfo from NNx_BaseAnalysis.m,
 %   Ch_Remove from NNx_editProbeInfo_ChRemove.m).
 
-function [csd, csdinfo] = CSD_flex(data, ProbeInfo, prb, varargin)
+function [csd, csdinfo] = NNx_CSD_flex(data, ProbeInfo, prb, varargin)
 
 p = inputParser;
 addRequired(p, 'data', @(x) isnumeric(x) && ndims(x) <= 3);
@@ -87,22 +87,22 @@ end
 nch = size(data,3);
 if nch ~= numel(chan_ids)
     if ~chremove
-        error('CSD_flex:channelCount', ['data has %d channels, but probe %d has %d channels in ProbeInfo.ProbeIds ' ...
+        error('NNx_CSD_flex:channelCount', ['data has %d channels, but probe %d has %d channels in ProbeInfo.ProbeIds ' ...
             '(''ChRemove'', false expects all of them). If the %d Ch_Remove channel(s) were already dropped ' ...
-            'from data, call CSD_flex with ''ChRemove'', true.'], nch, prb, numel(probeids), numel(removed));
+            'from data, call NNx_CSD_flex with ''ChRemove'', true.'], nch, prb, numel(probeids), numel(removed));
     elseif nch == numel(probeids)
-        error('CSD_flex:channelCount', ['data has %d channels, the full probe %d channel count, but ''ChRemove'', true ' ...
-            'expects %d (Ch_Remove dropped). If data still holds every channel, call CSD_flex with ''ChRemove'', false.'], ...
+        error('NNx_CSD_flex:channelCount', ['data has %d channels, the full probe %d channel count, but ''ChRemove'', true ' ...
+            'expects %d (Ch_Remove dropped). If data still holds every channel, call NNx_CSD_flex with ''ChRemove'', false.'], ...
             nch, prb, numel(chan_ids));
     else
-        error('CSD_flex:channelCount', ['data has %d channels, but probe %d has %d channels after dropping ' ...
+        error('NNx_CSD_flex:channelCount', ['data has %d channels, but probe %d has %d channels after dropping ' ...
             'its %d Ch_Remove channel(s) (''ChRemove'', true).'], nch, prb, numel(chan_ids), numel(removed));
     end
 end
 
 probemap = ProbeInfo.ProbeMaps{prb}; %[depth rows x shanks]
 if ~all(ismember(chan_ids, probemap(:)))
-    error('CSD_flex:probeMap', 'Channel(s) %s of probe %d are not in ProbeInfo.ProbeMaps{%d}.', ...
+    error('NNx_CSD_flex:probeMap', 'Channel(s) %s of probe %d are not in ProbeInfo.ProbeMaps{%d}.', ...
         mat2str(chan_ids(~ismember(chan_ids, probemap(:)))'), prb, prb);
 end
 nshank = size(probemap,2);

@@ -1,6 +1,6 @@
-% LFPCorrelation_LvsLW.m
+% NNx_LFPCorrelation_LvsLW.m
 %
-% Description: follow-up to P1PeakTime_Variance_LvsLW.m, straight from the LFP files. Asks whether
+% Description: follow-up to NNx_P1PeakTime_Variance_LvsLW.m, straight from the LFP files. Asks whether
 %   adding whisker (LW) makes the response a clearer, more consistent oscillation than light alone (L),
 %   three ways, for the channels of one probe (region, e.g. V1):
 %     1) autocorrelation (ACF) of each trial in the P2 window (350-3000 ms post stim): mean ACF trace per
@@ -16,7 +16,7 @@
 %   Everything is done per animal, then combined across animals like the P1 script: per "unit"
 %   (animal x channel x pair) L vs LW, signrank across units and a mixed model with animal and channel
 %   as random effects, optional per-animal channel maps, ranked-shank heatmaps
-%   (plotLWIntensityCompare/plotLWTTXCompare_multianimal) and a per-trial x channel csv for R.
+%   (NNx_plotLWIntensityCompare/NNx_plotLWTTXCompare_multianimal) and a per-trial x channel csv for R.
 %   ACF secondary peak vs trial-trial correlation: the ACF sees rhythm whatever its phase, the
 %   trial-trial correlation only sees what is time-locked to the stimulus, so together they split
 %   "LW is more rhythmic" from "LW is more time-locked".
@@ -35,7 +35,7 @@
 %     .ProbeMaps (cell, 1 x probes) - [rows x shanks] raw channel IDs, 0 = no site, row 1 = top
 %     .Ch_Remove (cell, 1 x probes) - raw channel IDs to leave out
 %     .ShankLabels (cell, 1 x probes, optional) - struct of per-shank scores -> ShankRank_<score> columns
-%   INFERRED DATA CONTRACTS (as in SummaryAnalysis_MultiMouse_allChannels.m, not stated in the files):
+%   INFERRED DATA CONTRACTS (as in NNx_SummaryAnalysis_MultiMouse_allChannels.m, not stated in the files):
 %     - stim onset is sample 5001 of stim_lfp_stimchunks (BaseAnalysis epochs with pre = 5000)
 %     - channel index (dim 3) of stim_lfp_stimchunks = raw channel ID (true when ChanIds = 1:Chans)
 %     - Ch_Remove is indexed by probe number
@@ -88,7 +88,7 @@
 %
 % Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); NNx_TrialRemove_Conditional(_callable).m
 %   (tr_remove mask format); ProbeInfo.ShankLabels from the channel/shank labelling scripts (heatmaps);
-%   plotLWIntensityCompare_multianimal.m / plotLWTTXCompare_multianimal.m (heatplot); uipickfiles.m;
+%   NNx_plotLWIntensityCompare_multianimal.m / NNx_plotLWTTXCompare_multianimal.m (heatplot); uipickfiles.m;
 %   Signal Processing Toolbox (butter, zp2sos, filtfilt); Statistics Toolbox (corr, ranksum,
 %   signrank, fitlme); MATLAB R2022a+ (clim, tiledlayout 'tight', islocalmax).
 %
@@ -158,8 +158,8 @@ plot_summary = 1;
 %Want the ranked-shank summary heatmaps too?
 heatplot = 2;
     % 0 = no heatmaps
-    % 1 = intensity layout (plotLWIntensityCompare_multianimal: L/LW 4, 8, 12, 15)
-    % 2 = TTX layout (plotLWTTXCompare_multianimal: L/LW 8 with and without TTX)
+    % 1 = intensity layout (NNx_plotLWIntensityCompare_multianimal: L/LW 4, 8, 12, 15)
+    % 2 = TTX layout (NNx_plotLWTTXCompare_multianimal: L/LW 8 with and without TTX)
 heat_metrics = ["P2_ACFPk2","All_TrialCorr","All_ChanCorr"]; %one heatmap figure each
 save_heatpng = 0; %1 = save the heatmaps as PNG (you'll get a file name box)
 %save the per-trial table as a csv for R?
@@ -1248,10 +1248,10 @@ if heatplot > 0
     for k = 1:numel(alignlabels)
         disp(['Heatmaps: centring on ' char(alignlabels(k))])
         if heatplot == 1
-            [heatfigs{k}, heatdata{k}] = plotLWIntensityCompare_multianimal(heatanimals, tableres, region, heat_metrics, ...
+            [heatfigs{k}, heatdata{k}] = NNx_plotLWIntensityCompare_multianimal(heatanimals, tableres, region, heat_metrics, ...
                 [], true, save_heatpng == 1, alignlabels(k), true, []);
         elseif heatplot == 2
-            [heatfigs{k}, heatdata{k}] = plotLWTTXCompare_multianimal(heatanimals, tableres, region, heat_metrics, ...
+            [heatfigs{k}, heatdata{k}] = NNx_plotLWTTXCompare_multianimal(heatanimals, tableres, region, heat_metrics, ...
                 [], true, save_heatpng == 1, alignlabels(k), true, []);
         end
         set(heatfigs{k},'Name',"LFP corr, aligned on " + alignlabels(k)) %figure titles look the same, so label the windows
@@ -1286,7 +1286,7 @@ end
 
 %% report
 
-disp('===== LFPCorrelation_LvsLW run report =====')
+disp('===== NNx_LFPCorrelation_LvsLW run report =====')
 disp('files used:')
 disp(filesused)
 disp('good trials per animal (rows) x condition (columns):')
