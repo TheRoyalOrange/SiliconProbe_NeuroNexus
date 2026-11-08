@@ -35,10 +35,20 @@
 %     10b. per probe: the same ITPC, blanked (NaN) outside Rayleigh
 %        p ~ 0.05, so only the significant regions show, with the same
 %        outlines and the stim-onset line
-%     11. asks for a frequency band (inputdlg, repeats until you're happy),
-%        bandpasses the trial-average LFP in that band and draws that ERP
-%        over the section-10 ITPC plot on a right-hand y axis
-%   Figures are not saved. Planned later: merge steps behind 0/1 toggles,
+%     11a. asks for one channel (inputdlg), plots its ITPC with the
+%        Rayleigh outlines (nothing blanked), and you draw a time-frequency
+%        ROI box on it (drawrectangle, repeats until you're happy). It then
+%        re-does that channel's wavelet phases for the ROI frequencies (so
+%        it works with mr_clean = 0 or 1), scores each trial by its mean
+%        |phase - prefAngle_lfp| over the ROI (tr_lag, radians), and plots
+%        every trial bandpassed to trialplot_hz, stacked a fixed distance
+%        apart and coloured by tr_lag (trialsort 0/1 = original or lag
+%        order)
+%     11b. OFF: asks for a frequency band and draws the band-passed
+%        trial-average LFP over the section-10 ITPC plot
+%   Figures are not saved. The last section saves itpc_lfp, itpc2_lfp and
+%   rayleighZ_lfp to <animal>_<ref_condition>_itpc_res.mat in Matlab's
+%   current folder. Planned later: merge steps behind 0/1 toggles,
 %   other conditions scored against ref_condition (e.g. a per-trial
 %   phase-reset score), further connectivity measures.
 %
@@ -92,16 +102,25 @@
 %     rows.
 %   pow_lfp, powdB_lfp (single, nch x nfrex x ntime) - trial-mean wavelet
 %     power (uV^2), and trial mean of per-trial dB vs tf_baseline_ms
-%   spec_pre500, spec_post500, spec_pre200, spec_post200 (single, nch x
-%     nfrex) - pow_lfp averaged over [-500 0), (0 500], [-200 0), (0 200]
-%     ms, uV^2. At low frequencies the wavelet smears across 0 ms.
+%   spec_pre500, spec_post500, spec_pre200, spec_post200, spec_pre100,
+%     spec_post100 (single, nch x nfrex) - pow_lfp averaged over [-500 0),
+%     (0 500], [-200 0), (0 200], [-100 0), (0 100] ms, uV^2. At low
+%     frequencies the wavelet smears across 0 ms.
 %   itpc_lfp, prefAngle_lfp, rayleighZ_lfp, itpc2_lfp, prefAxis_lfp,
 %     phasemode_lfp - section 6, same meaning as the *_ref versions below
 %     but from phase_lfp
-%   erp_band (double, 1 x 2) - last band picked in section 11, Hz
+%   chcheck (double) - raw channel ID picked in section 11a
+%   roi_ms, roi_hz (double, 1 x 2) - drawn ROI edges, ms re: stim and Hz
+%   tr_lag (double, ntrials x 1) - per trial, mean over the ROI of
+%     |angle(exp(i*(phase - prefAngle_lfp)))|, radians, 0 (on the preferred
+%     phase) to pi (opposite). Trial order = trial_table rows. prefAngle
+%     includes the trial itself; meaningless where ITPC ~ chance.
+%   trial_lfp (double, ntrials x nseg) - chcheck's LFP per trial,
+%     bandpassed to trialplot_hz (IIR, zero-phase), uV, over seg_ms
+%   --- the outputs below come from sections that are OFF for now ---
+%   erp_band (double, 1 x 2) - last band picked in section 11b, Hz
 %   erp_band_lfp (double, nch x nseg) - trial-average LFP bandpassed to
 %     erp_band (IIR, zero-phase), uV, over seg_ms
-%   --- the outputs below come from sections that are OFF for now ---
 %   csd_ref (double, trials x nseg x nch) - ref_condition inverse CSD in
 %     uA/mm^3, same dims/order as lfp_ref (positive = source, negative =
 %     sink). NaN on shanks with fewer than csd_min_chans kept channels.
@@ -156,7 +175,8 @@
 %
 % Dependencies: NNx_BaseAnalysis.m (LFP files, ProbeInfo),
 %   NNx_editProbeInfo_ChRemove.m (Ch_Remove), uipickfiles.m,
-%   Signal Processing Toolbox (bandpass); optional
+%   Signal Processing Toolbox (bandpass), Image Processing Toolbox
+%   (drawrectangle, section 11a); optional
 %   NNx_TrialRemove_Conditional_callable.m (tr_remove_conditional).
 %   OFF sections also need NNx_CSD_flex.m (Functions\Analysis, must be on the Matlab path) and slanCM.m.
 
@@ -1337,9 +1357,167 @@ for prb = prbs
     end
 end
 
-%% 11 Data Visualization: band-passed ERP on top of the ITPC
+%% 11a Data Visualization: one channel up close, draw a TF ROI, trials coloured by phase lag
+%pick a channel, look at its ITPC, draw a box around the time-frequency spot you care about, and then every
+%trial gets plotted (stacked) and coloured by how far its phase sits from the trial-average preferred phase
+%(prefAngle_lfp) inside that box. Low lag = that trial lined up with everyone else = phase reset-y
+
+%what band should the stacked trials be filtered to?
+trialplot_hz = [1 80]; %Hz
+%what order should the trials be stacked in?
+trialsort = 0;
+    % 0 = trial_table order (pooled file order)
+    % 1 = sorted by lag, smallest lag at the top
+%how far apart should the stacked trials be?
+trial_spacing = []; %uV between trials; [] = 4 x the median trial SD (auto)
+lag_cmap = turbo(256); %colour per trial lag, 0 (blue) to pi (red)
+
+%rebuilt here so this section runs without section 10
+tpi = find(times_ms >= itpcplot_ms(1) & times_ms <= itpcplot_ms(2)); %time points to show
+fpi = find(frex >= itpcplot_hz(1) & frex <= itpcplot_hz(2)); %frequencies to show
+ntr = size(lfp_ref,1); %number of trials
+rayZ_p = [0.05 0.01]; %Rayleigh Z at these p levels for this trial count (same Zar formula as sections 6 and 10)
+L = log(rayZ_p) + 1 + 2*ntr;
+rayZ_thresh = (1 + 4*ntr + 4*ntr^2 - L.^2) / (4*ntr);
+rayZ_colors = {'c', 'w'}; %outline colour for each p level
+
+%which channel?
+dlgtitle = 'One channel up close';
+promt = {'Which channel? (the CH number from the plots)'};
+fieldsize = [1 50];
+definput = {''};
+opts.Resize = 'on';
+opts.WindowStyle = 'normal';
+chpick = inputdlg(promt,dlgtitle,fieldsize,definput,opts);
+chcheck = str2num(chpick{1}); %raw channel ID
+k = find(chansuse == chcheck); %where it lives in the channel dim
+if isempty(k) == true
+    error('CH%d is not one of the analysed channels (removed, or not on a probe in regions)', chcheck);
+end
+
+%its ITPC, outlines on, nothing blanked
+figure();
+set(gcf, 'Position', get(0, 'Screensize'));
+tf = reshape(itpc_lfp(k, fpi, tpi), numel(fpi), numel(tpi)); % [frequencies x time]
+zz = reshape(rayleighZ_lfp(k, fpi, tpi), numel(fpi), numel(tpi)); %Rayleigh Z for the outlines
+contour(times_ms(tpi), frex(fpi), tf, 50, 'Fill', 'on')
+set(gca, 'YDir', 'normal', 'CLim', itpc_clim)
+colormap(gca, parula(256))
+hold on
+for lv = 1:numel(rayZ_thresh) %significance outlines
+    if any(zz(:) >= rayZ_thresh(lv))
+        contour(times_ms(tpi), frex(fpi), zz, rayZ_thresh(lv)*[1 1], 'LineColor', rayZ_colors{lv}, 'LineWidth', 1);
+    end
+end
+xline(0, 'LineWidth', 1, 'Color', 'r'); %stim onset
+hold off
+c = colorbar('eastoutside');
+c.Label.String = 'ITPC';
+xlabel('Time (ms)')
+ylabel('Frequency (Hz)')
+title(sprintf('%s %s-Probe CH%d %s ITPC (%d trials). Cyan p~0.05, white p~0.01, uncorrected. Draw a box around your ROI', ...
+    animal, ProbeInfo.Areas{ch_probe(k)}, chcheck, ref_condition, ntr), 'Interpreter', 'none')
+
+%draw the time-frequency ROI (drag a box; you can nudge it before answering the question)
+ishsokay = 0;
+while ishsokay == 0
+    roi = drawrectangle('Color', 'm'); %needs the Image Processing Toolbox
+    quest = 'Happy with that box?';
+    btn1 = 'Yes, happy as a clam';
+    btn2 = 'No, lemme draw again';
+    answer = questdlg(quest, 'TF ROI', btn1, btn2, btn1);
+    switch answer
+        case btn1
+            ishsokay = 1;
+        case btn2
+            delete(roi) %wipe it and go again
+    end
+end
+roi_ms = [roi.Position(1) roi.Position(1)+roi.Position(3)]; %ms re: stim
+roi_hz = [roi.Position(2) roi.Position(2)+roi.Position(4)]; %Hz
+roi_t = find(times_ms >= roi_ms(1) & times_ms <= roi_ms(2)); %ROI positions in times_ms
+roi_f = find(frex >= roi_hz(1) & frex <= roi_hz(2)); %ROI positions in frex
+if isempty(roi_t) == true || isempty(roi_f) == true
+    error('The ROI box holds no time points or no frequencies (frex steps are %g Hz), draw a bigger one', frex(2)-frex(1));
+end
+
+%this channel's per-trial phases in the ROI frequencies, re-done here (same as section 5, one channel)
+%so this section still works after mr_clean = 1 cleared phase_lfp. Only a few seconds
+disp(['11a: re-wavelet-ing CH' num2str(chcheck) ' for the ROI frequencies'])
+s = logspace(log10(range_cycles(1)), log10(range_cycles(end)), numel(frex)) ./ (2*pi*frex); %Gaussian width, s (over all frex, so it matches section 5)
+wavtime = -2:1/1000:2;
+half_wave = (length(wavtime)-1)/2;
+nConv = length(wavtime) + nseg*ntr - 1;
+[~, keep_idx] = ismember(times_ms, seg_ms); %where time_ms sits inside the padded segment
+dat = lfp_ref(:,:,k); % [trials x segment], uV
+dat = bandpass(dat', lfp_bp_hz, 1000, 'ImpulseResponse', 'iir')'; %same broadband clean-up as section 5
+dataX = fft(reshape(dat', 1, []), nConv); %trials concatenated end to end
+ph_roi = zeros(numel(roi_f), numel(roi_t), ntr); % [ROI freqs x ROI time x trials], radians
+for f = 1:numel(roi_f)
+    fi = roi_f(f);
+    wavelet = exp(2*1i*pi*frex(fi).*wavtime) .* exp(-wavtime.^2./(2*s(fi)^2)); %create wavelet
+    wX = fft(wavelet, nConv);
+    wX = wX ./ max(abs(wX)); %normalise gain only, phase untouched (as in section 5)
+    as = ifft(wX .* dataX); %convolution in one step
+    as = as(half_wave+1:end-half_wave); %trim off the wavelet's overhang
+    as = reshape(as, nseg, ntr); % [segment x trials]
+    ph_roi(f,:,:) = reshape(angle(as(keep_idx(roi_t),:)), [1 numel(roi_t) ntr]); %just the ROI times
+end
+clear wavelet wX dataX as dat
+
+%how far off the preferred phase is each trial? mean |phase - prefAngle| over the ROI, wrapped so it's 0 to pi.
+%heads up: prefAngle includes the trial itself (pulls lags down a bit with few trials), and it means nothing
+%where ITPC ~ chance, so keep the box inside an outline
+pref = double(reshape(prefAngle_lfp(k, roi_f, roi_t), numel(roi_f), numel(roi_t))); % [ROI freqs x ROI time], radians
+tr_lag = zeros(ntr,1); % [trials x 1], radians, 0 = on the preferred phase, pi = opposite
+for tr = 1:ntr
+    tr_lag(tr) = mean(abs(angle(exp(1i*(ph_roi(:,:,tr) - pref)))), 'all'); %wrap the difference to (-pi, pi], then take its size
+end
+
+%the trials, bandpassed for plotting
+trial_lfp = bandpass(lfp_ref(:,:,k)', trialplot_hz, 1000, 'ImpulseResponse', 'iir')'; % [trials x segment], uV
+eidx = find(seg_ms >= itpcplot_ms(1) & seg_ms <= itpcplot_ms(2)); %same time range as the ITPC plots
+if isempty(trial_spacing) == true
+    trial_spacing = 4*median(std(trial_lfp(:,eidx), 0, 2)); %auto: 4 x the typical trial SD
+end
+if trialsort == 1
+    [~, trorder] = sort(tr_lag'); %smallest lag first (top). Row vector, so the fliplr on the ticks below works
+else
+    trorder = 1:ntr; %trial_table order
+end
+
+%stack them, one trial a fixed distance below the last, coloured by lag
+figure();
+set(gcf, 'Position', get(0, 'Screensize'));
+hold on
+for j = 1:ntr
+    tr = trorder(j);
+    cidx = 1 + round(tr_lag(tr)/pi * (size(lag_cmap,1)-1)); %lag 0..pi -> colormap row
+    plot(seg_ms(eidx), trial_lfp(tr,eidx) - (j-1)*trial_spacing, 'Color', lag_cmap(cidx,:), 'LineWidth', .75)
+end
+xline(roi_ms(1), '--k', 'LineWidth', 1); %ROI time edges
+xline(roi_ms(2), '--k', 'LineWidth', 1);
+xline(0, 'LineWidth', 1, 'Color', 'r'); %stim onset
+hold off
+xlim(itpcplot_ms)
+ylim([-(ntr-1)*trial_spacing - 2*trial_spacing, 2*trial_spacing])
+tickstep = max(1, round(ntr/25)); %don't label every trial when there are hundreds
+yticks(fliplr(-(0:tickstep:ntr-1)*trial_spacing)) %yticks has to go low to high
+yticklabels(string(fliplr(trorder(1:tickstep:ntr)))) %labels = trial_table row
+colormap(gca, lag_cmap)
+set(gca, 'CLim', [0 pi]) %fixed scale, so channels and animals compare
+c = colorbar('eastoutside');
+c.Label.String = 'mean |phase - prefAngle| in ROI (rad)';
+xlabel('Time (ms)')
+ylabel('Trial (trial\_table row)')
+title(sprintf('%s %s-Probe CH%d %s: %g-%g Hz trials, coloured by phase lag in ROI %.0f to %.0f ms, %.1f-%.1f Hz', ...
+    animal, ProbeInfo.Areas{ch_probe(k)}, chcheck, ref_condition, trialplot_hz, roi_ms, roi_hz), 'Interpreter', 'none')
+
+%% 11b (OFF) Data Visualization: band-passed ERP on top of the ITPC
+%switched off 2026-11-08: not that useful for now. Kept for later, take away the %{ %} to run it
 %pick a band (probably from the ITPC plots) and its ERP gets drawn over the ITPC, with its own y axis on the right.
-%Uses tpi, fpi, rayZ_thresh and rayZ_colors from section 10, so run that first
+%Uses tpi, fpi, rayZ_thresh and rayZ_colors from section 10 (or 11a), so run that first
+%{
 ishsokay = 0;
 while ishsokay == 0
     dlgtitle = 'Band ERP';
@@ -1432,6 +1610,10 @@ while ishsokay == 0
             ishsokay = 0;
     end
 end
+%}
 
-%%
- save('20261011-p7_WactiveTTX_itpc_res.mat', 'erp_raw', 'itpc_lfp', 'itpc2_lfp', 'rayleighZ_lfp')
+%% Save: ITPC results
+%save('20261011-p7_WactiveTTX_itpc_res.mat', 'erp_raw', 'itpc_lfp', 'itpc2_lfp', 'rayleighZ_lfp') %old: hardcoded name, and erp_raw only came from section 11b (now OFF; easy to recalculate)
+fname = sprintf([animal '_' ref_condition '_itpc_res']); %e.g. 20261011-p7_WhiskerActive_TTX_itpc_res
+save(fname, 'itpc_lfp', 'itpc2_lfp', 'rayleighZ_lfp'); %goes to Matlab's current folder
+disp('saved')

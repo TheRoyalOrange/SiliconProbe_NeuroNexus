@@ -26,7 +26,10 @@
 %     itpc_lfp (single, nch x nfrex x ntime) - ITPC, 0-1
 %     itpc2_lfp (single, nch x nfrex x ntime) - 2nd-harmonic ITPC, 0-1
 %     rayleighZ_lfp (single, nch x nfrex x ntime) - ntrials * ITPC^2
-%     erp_raw (double, nseg x nch) - trial-average LFP, unfiltered, uV
+%     erp_raw (double, nseg x nch, OPTIONAL) - trial-average LFP,
+%       unfiltered, uV. Only in older files: the ITPC script stopped saving
+%       it 2026-11-08. Needed in both files for plot_erp = 1; if either file
+%       lacks it, plot_erp is switched off and noted in the report.
 %   INFERRED (the files don't store these, so they're rebuilt here and must
 %   match the ITPC run that made the files):
 %     - channel dim k = chansuse(k), built from ProbeInfo with the same
@@ -38,7 +41,8 @@
 %
 % Outputs (workspace):
 %   res (cell, 1 x 2) - the loaded files, one struct per condition with the
-%     four variables above
+%     variables above (erp_raw only if the file has it)
+%   has_erp (logical, 1 x 2) - whether each condition's file has erp_raw
 %   itpc_diff (single, nch x nfrex x ntime) - condition 1 minus condition 2
 %     of the measure picked by diff_measure (diff_name says which), unmasked
 %   sigmask (logical, nch x nfrex x ntime) - true where ref_cond's Rayleigh
@@ -46,7 +50,7 @@
 %   itpc_diff_show (single, same size) - itpc_diff with NaN outside sigmask
 %     when sig_only = 1 (what gets plotted)
 %   erp_plot (cell, 1 x 2) - (double, nch x nseg) ERP per condition, uV,
-%     bandpassed to erp_band if one is set
+%     bandpassed to erp_band if one is set (only built when plot_erp = 1)
 %   erp_band (double, 1 x 2 or empty) - last band picked, Hz ([] = raw)
 %   chansuse, ch_probe, ch_row, ch_shank (double, nch x 1) - raw channel ID,
 %     probe index, ProbeMaps row and shank of each channel
@@ -102,7 +106,7 @@ itpcplot_ms = [-200 500]; %ms re: stim
 itpcplot_hz = [1 80]; %Hz
 diff_clim = []; %colour limits for the difference, e.g. [-0.2 0.2]; [] = symmetric around 0, from each probe's biggest difference
 
-%want the ERPs of both conditions drawn on top?
+%want the ERPs of both conditions drawn on top? (only works with older ITPC results files that still have erp_raw; otherwise it switches itself off)
 plot_erp = 0;
     % 0 = difference only
     % 1 = ERPs on a right-hand y axis (condition 1 solid black, condition 2 dashed black)
@@ -165,13 +169,21 @@ seg_ms = (time_ms(1)-pad_ms):(time_ms(2)+pad_ms); %ms re: stim, time dim of erp_
 
 %% Data Extraction: load the ITPC results of each condition
 res = cell(1,2); %one struct per condition
+has_erp = false(1,2); %does each file have erp_raw?
 for c = 1:2
     pickedfile = uipickfiles('FilterSpec', load_directory, 'Prompt', ['Choose the ' condnames{c} ' ITPC results file (just one)'], 'NumFiles', 1);
     if ~iscell(pickedfile) || isempty(pickedfile)
         error('No file chosen for condition %s', condnames{c});
     end
     disp(['Loading: ' condnames{c}])
-    res{c} = load(pickedfile{1}, 'itpc_lfp', 'itpc2_lfp', 'rayleighZ_lfp', 'erp_raw');
+    %res{c} = load(pickedfile{1}, 'itpc_lfp', 'itpc2_lfp', 'rayleighZ_lfp', 'erp_raw'); %old: the ITPC script stopped saving erp_raw (2026-11-08), so it's optional now
+    vars = who('-file', pickedfile{1}); %what's in the file?
+    has_erp(c) = ismember('erp_raw', vars); %only older ITPC results files have the ERP
+    if has_erp(c) == true
+        res{c} = load(pickedfile{1}, 'itpc_lfp', 'itpc2_lfp', 'rayleighZ_lfp', 'erp_raw');
+    else
+        res{c} = load(pickedfile{1}, 'itpc_lfp', 'itpc2_lfp', 'rayleighZ_lfp');
+    end
     report.files{c} = pickedfile{1};
 
     %do the sizes fit the channels and axes rebuilt above? if not, the setup doesn't match the ITPC run
@@ -179,7 +191,7 @@ for c = 1:2
         error('%s: itpc_lfp is %s but the setup gives [%d %d %d] (channels x freqs x time). Check regions, Ch_Remove, frex and time_ms', ...
             condnames{c}, mat2str(size(res{c}.itpc_lfp)), nch, numel(frex), numel(times_ms));
     end
-    if isequal(size(res{c}.erp_raw), [numel(seg_ms) nch]) == false
+    if has_erp(c) == true && isequal(size(res{c}.erp_raw), [numel(seg_ms) nch]) == false
         error('%s: erp_raw is %s but the setup gives [%d %d] (time x channels). Check time_ms and pad_ms', ...
             condnames{c}, mat2str(size(res{c}.erp_raw)), numel(seg_ms), nch);
     end
@@ -189,6 +201,13 @@ for c = 1:2
     report.ntrials(c) = round(median(res{c}.rayleighZ_lfp(ok) ./ res{c}.itpc_lfp(ok).^2));
 end
 report.condnames = condnames;
+
+%ERPs on top need erp_raw in both files; newer ITPC results don't save it, so the overlay just gets switched off
+if plot_erp == 1 && all(has_erp) == false
+    plot_erp = 0;
+    report.notes{end+1} = sprintf('plot_erp switched off: no erp_raw in %s (newer ITPC results files don''t save it)', ...
+        strjoin(condnames(has_erp == false), ' and '));
+end
 
 %% Data PreProcessing: condition 1 minus condition 2
 diff_fields = {'itpc_lfp', 'rayleighZ_lfp', 'itpc2_lfp'}; %what diff_measure picks
@@ -246,20 +265,22 @@ while ishsokay == 0
         erp_band = str2num(bandpick{1}); %Hz, [] = raw
     end
 
-    %ERPs to draw on top, [channels x segment]
+    %ERPs to draw on top, [channels x segment] (only when they're being drawn: newer files have no erp_raw)
     %the ERP is already a trial average and the bandpass is linear and zero-phase, so filtering the average = averaging filtered trials
-    erp_plot = cell(1,2);
-    for c = 1:2
-        if isempty(erp_band) == true
-            erp_plot{c} = res{c}.erp_raw'; %raw trial-average, uV
-        else
-            erp_plot{c} = bandpass(res{c}.erp_raw, erp_band, 1000, 'ImpulseResponse', 'iir')'; %zero-phase bandpass, uV (bandpass works down columns = time)
+    if plot_erp == 1
+        erp_plot = cell(1,2);
+        for c = 1:2
+            if isempty(erp_band) == true
+                erp_plot{c} = res{c}.erp_raw'; %raw trial-average, uV
+            else
+                erp_plot{c} = bandpass(res{c}.erp_raw, erp_band, 1000, 'ImpulseResponse', 'iir')'; %zero-phase bandpass, uV (bandpass works down columns = time)
+            end
         end
-    end
-    if isempty(erp_band) == true
-        erp_label = 'raw ERP';
-    else
-        erp_label = sprintf('%g-%g Hz ERP', erp_band);
+        if isempty(erp_band) == true
+            erp_label = 'raw ERP';
+        else
+            erp_label = sprintf('%g-%g Hz ERP', erp_band);
+        end
     end
 
     for prb = prbs
@@ -278,7 +299,9 @@ while ishsokay == 0
             clim_p = diff_clim;
         end
         %same ERP scale for the whole probe, both conditions
-        elim = max([max(abs(erp_plot{1}(onprobe, eidx)), [], 'all') max(abs(erp_plot{2}(onprobe, eidx)), [], 'all')]);
+        if plot_erp == 1
+            elim = max([max(abs(erp_plot{1}(onprobe, eidx)), [], 'all') max(abs(erp_plot{2}(onprobe, eidx)), [], 'all')]);
+        end
 
         figure();
         set(gcf, 'Position', get(0, 'Screensize'));
