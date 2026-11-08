@@ -1,6 +1,7 @@
 % NNx_LFPCorrelation_LvsLW.m
 %
-% Description: follow-up to NNx_P1PeakTime_Variance_LvsLW.m, straight from the LFP files. Asks whether
+% Description: follow-up to NNx_P1PeakTime_Variance_LvsLW.m (archived 2026-11-08, out of the repo but
+%   still in git history), straight from the LFP files. Asks whether
 %   adding whisker (LW) makes the response a clearer, more consistent oscillation than light alone (L),
 %   three ways, for the channels of one probe (region, e.g. V1):
 %     1) autocorrelation (ACF) of each trial in the P2 window (350-3000 ms post stim): mean ACF trace per

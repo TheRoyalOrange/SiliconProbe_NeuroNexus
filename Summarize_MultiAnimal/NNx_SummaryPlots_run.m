@@ -371,6 +371,8 @@ scorenorm_shankrowprof = 0;
 
 
 %% Data Visualization: Shank distance vs condition difference, multi-animal (NNx_plotShankDistance_ConditionCompare)
+%ARCHIVED 2026-11-08: NNx_plotShankDistance_ConditionCompare.m was moved out of the repo (kept in a local
+%archive folder, and still in git history), so this section stays off. Old note, in case it comes back:
 %will be fixed later - NNx_plotShankDistance_ConditionCompare.m is a script, not a function, and its first
 %section still loads its own hardcoded csvs into summaryTable (it would overwrite the one from Setup)
 %and its settings section resets everything set here. Until then, open it and run it there:
