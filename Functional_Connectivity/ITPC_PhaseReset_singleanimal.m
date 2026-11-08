@@ -158,7 +158,7 @@
 %   NNx_editProbeInfo_ChRemove.m (Ch_Remove), uipickfiles.m,
 %   Signal Processing Toolbox (bandpass); optional
 %   NNx_TrialRemove_Conditional_callable.m (tr_remove_conditional).
-%   OFF sections also need CSD_flex.m (this folder) and slanCM.m.
+%   OFF sections also need CSD_flex.m (Functions\Analysis, must be on the Matlab path) and slanCM.m.
 
 %% 1 PARAMETERS
 animal = '20261011-p7';

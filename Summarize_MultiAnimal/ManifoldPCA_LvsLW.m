@@ -148,7 +148,7 @@
 %   csv (save_csv = 1) - stats_win, you'll get a file name box
 %
 % Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); NNx_TrialRemove_Conditional(_callable).m
-%   (tr_remove mask format); CSD_flex.m (Functional_Connectivity folder, CSD signals); uipickfiles.m;
+%   (tr_remove mask format); CSD_flex.m (Functions\Analysis folder, CSD signals); uipickfiles.m;
 %   Statistics Toolbox (pca, signrank, fitlme); Signal Processing Toolbox (butter, zp2sos, filtfilt,
 %   envelope); MATLAB R2019b+ (tiledlayout).
 %
