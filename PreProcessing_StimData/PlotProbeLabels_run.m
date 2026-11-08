@@ -20,7 +20,7 @@
 %   figs_labels (struct) - one field per mouse (valid field name of the animal ID), each the
 %     figure handles returned by plotProbeLabels
 %
-% Dependencies: plotProbeLabels.m (same folder); NNx_editProbeInfo_ChLabel_SponData.m /
+% Dependencies: plotProbeLabels.m (Functions\Plotting, must be on the Matlab path); NNx_editProbeInfo_ChLabel_SponData.m /
 %   NNx_editProbeInfo_ChLabel_StimData.m (write the labels into ProbeInfo).
 
 mice = {"20260423-p12"};

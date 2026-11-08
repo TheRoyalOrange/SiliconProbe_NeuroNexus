@@ -2,7 +2,7 @@
 %
 % Description: One place to make every plot from the summary table (the csv written by
 %   SummaryAnalysis_MultiMouse_allChannels.m). Each %% section sets up and calls one plotting
-%   function in Summarize_MultiAnimal. The sections are NOT meant to be run top to bottom:
+%   function in Functions\Plotting. The sections are NOT meant to be run top to bottom:
 %   run the Setup section first (loads the table), then run only the section(s) you want
 %   (Ctrl+Enter in the section). Each section has its own little input block at its top.
 %   In those blocks, [] means "ask me in a dialog" (not "" - an empty string is not empty to Matlab).
@@ -37,7 +37,7 @@
 %   (data_* struct fields: see each function's header)
 %
 % Dependencies: SummaryAnalysis_MultiMouse_allChannels.m (makes the csv, including its section that
-%   adds Chan_Shank / Chan_Depth / ShankRank_<score>); the plotting functions in Summarize_MultiAnimal
+%   adds Chan_Shank / Chan_Depth / ShankRank_<score>); the plotting functions in Functions\Plotting
 %   (that folder must be on the Matlab path); NNx_editProbeInfo_ChLabel_SponData.m /
 %   NNx_editProbeInfo_ChLabel_StimData.m (labels in ProbeInfo).
 
