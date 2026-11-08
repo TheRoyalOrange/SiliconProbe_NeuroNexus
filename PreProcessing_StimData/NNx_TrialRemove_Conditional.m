@@ -106,7 +106,7 @@
 %     CSD/TF result files, and <save_directory>\<master_filename> updated
 %     - see NNx_TrialRemove_Conditional_callable.m's own header for details.
 %
-% Dependencies: NNx_TrialRemove_Conditional_callable.m (same folder);
+% Dependencies: NNx_TrialRemove_Conditional_callable.m (Functions\Analysis, must be on the MATLAB path);
 %   uipickfiles (must be on the MATLAB path - already used elsewhere in
 %   this repo, e.g. Summarize_MultiAnimal\SummaryAnalysis_MultiMouse_allChannels.m);
 %   expects NNx_BaseAnalysis.m (or a variant) to have already been
