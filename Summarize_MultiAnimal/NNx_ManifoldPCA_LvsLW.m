@@ -1,33 +1,18 @@
 % NNx_ManifoldPCA_LvsLW.m
 %
-% Description: quick look at the population response in light alone (L) vs light + whisker (LW), for
-%   the channels of one probe (region, e.g. V1). Every trial you pick is drawn as a line through PC
-%   space (2D or 3D), all conditions in the same space: L trials grey to black and LW trials pink to red
-%   as light intensity goes up (the order you list the conditions in). One column per signal. All four
-%   signals are made from the LFP files:
-%     LFP      - bandpassed LFP
-%     CSD      - inverse CSD of that LFP, per trial (NNx_CSD_flex.m), more local than the LFP
-%     LFP_RMS  - moving RMS envelope of the LFP (how big the signal is, ignoring its sign and phase)
-%     CSD_RMS  - moving RMS envelope of the CSD
-%   (Spiking is commented out for now, the code is kept for later.)
-%   Steps, per animal x signal:
-%     1) loads the good trials of each condition, makes the signals, bins them (bin_ms)
-%     2) takes the plot_ms stretch of all trials of all conditions, sticks them end to end, z-scores each
-%        channel over all of it (so a gain change between conditions isn't normalised away)
-%     3) runs one PCA on that (channels = variables, time bins = samples), so every condition shares the
-%        same axes. Conditions with more trials count for more in the fit
-%     4) top panel: each trial as a thin line, in random drawing order. Bottom panel: same PCs, just each
-%        condition's mean, zoomed in, with a dot at stim onset
-%     5) measures the path length of each condition's mean over path_ms (added-up distance between time
-%        bins, in the pca_dims PCs), at equal trial counts within an animal, and makes a bar plot. Noise
-%        makes a path longer, so read these against a pre-stim path (path_ms) of the same length of time.
-%        L vs LW at each intensity is tested by shuffling trials between them (equal trials, PCs fixed),
-%        shown on the bars as * (q < 0.05, Benjamini-Hochberg within a signal) or ns. L and LW come from
-%        separate files, so drift between files also counts as a difference: use a pre-stim path_ms as control.
-%        A second bar plot shows all animals together (mean +- SEM, a line per animal), with an all-animal
-%        shuffle test, signrank across animals, and a mixed model with animal as a random effect
-%     6) CSD RMS means, L vs LW, one panel per light intensity (same PCs, same axes, equal trials per panel)
-%     7) run_pr = 1: participation ratio PR = (sum eig)^2 / sum(eig^2), about how many dimensions the
+% Description: participation ratio (PR) of the population response in light alone (L) vs light + whisker
+%   (LW), for the channels of one probe (region, e.g. V1), plus an optional look at the trials as lines
+%   through PC space. Trimmed down for now to Hilbert envelopes and one window:
+%     LFP_hbert_<lo>to<hi> - Hilbert amplitude envelope of the raw LFP bandpassed at one row of hbert_bands
+%                 (default 4-12, 12-30 and 30-80 Hz, so three signals), how big that band is, ignoring its
+%                 sign and phase. No line noise notch, so 50 Hz sits inside the 30-80 Hz band
+%     Resp      - the window measured, 75 to 3000 ms after the stim (win_ms)
+%   COMMENTED OUT for now, kept for later: the other signals (LFP, CSD, CSD_RMS) and the CSD maths, the
+%   other windows (Baseline, P1, P2), the path length sections, the CSD RMS figure, and the optional
+%   alignment/angle stats (run_stats). Spiking too.
+%   Steps, per animal:
+%     1) loads the good trials of each condition, makes one Hilbert envelope per band, bins them (bin_ms)
+%     2) run_pr = 1: participation ratio PR = (sum eig)^2 / sum(eig^2), about how many dimensions the
 %        variance is spread over (1 = one PC holds it all, nChans = spread evenly), per condition and window
 %        (win_names), all channels, equal trials within an animal, from three covariances:
 %          Total - all trials end to end. Noise - each trial minus its condition mean.
@@ -35,21 +20,17 @@
 %          so noise averages away instead of counting as signal
 %        Then signal vs noise PR compared directly: same-axes plot, ratio plot, signrank and a mixed model across
 %        animals (only conditions with SignalFrac >= pr_minfrac), plus an L vs LW shuffle test on signal PR,
-%        noise PR and their ratio (pr_test = 1). Signal PR is capped by a window's time bins, noise PR isn't,
-%        so be careful comparing windows of different lengths
-%
-%   OPTIONAL, run_stats = 1: on top of the plots, for each analysis window (win_names), on the
-%   trial means (TrialAvg) and on all trials end to end (SingleTrial), this measures in L and LW:
-%       participation ratio, as above but no signal/noise split
-%       alignment - how much of one condition's variance fits in the other condition's top pc_k
-%         PCs, relative to the most it could be (1 = same subspace), both directions averaged
-%       principal angle - mean angle between the two top pc_k subspaces (0 deg = same subspace)
-%     L and LW always use the same number of trials here, because PR depends on trial count (with unequal
-%     counts the real numbers are averaged over n_sub random subsamples). Trials are shuffled between L and
-%     LW n_perm times, because two noisy estimates of the SAME manifold still have alignment < 1 and
-%     angle > 0, so compare those to their null values, not to 1 and 0. L and LW come from separate
-%     files, so drift or brain state between files also counts as a difference: check the baseline window.
-%     Also draws trial-mean figures (plot_traj) and paired L vs LW summaries across animals (plot_summary).
+%        noise PR and their ratio (pr_test = 1). L and LW come from separate files, so drift between files
+%        also counts as a difference. With the Baseline window commented out there's no pre-stim control for
+%        that: uncomment it in win_names/win_ms to get it back
+%     3) plot_pca = 1: takes the plot_ms stretch of all trials of all conditions, sticks them end to end,
+%        z-scores each channel over all of it (so a gain change between conditions isn't normalised away),
+%        and runs one PCA on that (channels = variables, time bins = samples), so every condition shares
+%        the same axes. Conditions with more trials count for more in the fit. One figure per animal:
+%        top panel = each trial as a thin line, bottom panel = each condition's mean, zoomed in. L grey to
+%        black and LW pink to red as light intensity goes up (the order you list the conditions in).
+%        Direction: every trace fades from washed out (early) to full colour (late), dot = stim onset,
+%        square = end of plot_ms
 %
 % Inputs:
 %   User-set config (Setup section): mice, region, signal flags, condis_L, condis_LW, plot_ms, pca_dims,
@@ -66,7 +47,7 @@
 %     .Areas (cell of char, 1 x probes) - region per probe; region picks the probe
 %     .ProbeMaps (cell, 1 x probes) - [rows x shanks] raw channel IDs, 0 = no site
 %     .ProbeIds (cell, 1 x probes) - raw channel IDs on the probe, the channel order NNx_CSD_flex.m expects.
-%       Must be the same channels as ProbeMaps or the script stops with an error (CSD signals only)
+%       Must be the same channels as ProbeMaps or the script stops with an error (CSD signals only, commented out for now)
 %     .Ch_Remove (cell, 1 x probes) - raw channel IDs to leave out (can be shorter than probes, or empty)
 %   INFERRED DATA CONTRACTS (not stated in the files, same as NNx_LFPCorrelation_LvsLW.m):
 %     - stim onset is sample 5001 at 1 kHz (BaseAnalysis pre = 5 s)
@@ -78,15 +59,17 @@
 % Outputs (workspace; nothing saved unless plotsave / save_csv):
 %   signames (string, 1 x signals) - the signals that were run, order of dim 3 of the cells below
 %   stimdat (cell, animals x conditions x signals) - (single, trials x nbins x kept channels) good trials,
-%     binned, before z-scoring. LFP in uV, CSD in uA/mm^3 (positive = source), RMS in the same units.
+%     binned, before z-scoring. LFP in uV, CSD in uA/mm^3 (positive = source), Hilbert and RMS envelopes in the same units.
 %     Files of the same animal + condition are pooled. CSD signals still hold NaN channels here.
 %   time_bins (double, 1 x nbins) - bin centres, ms re: stim
 %   chanlist (cell, 1 x animals) - (double, kept channels x 1) raw channel IDs, order of dim 3 of stimdat
+%   Only with plot_pca = 1:
 %   pcscore (cell, animals x signals) - (double, trials x plot bins x pca_dims) PC scores of every trial
 %     of every condition that animal has
 %   pccond (cell, animals x signals) - (double, trials x 1) condition of each of those trials, index into condis
 %   pcexpl (cell, animals x signals) - (double, PCs x 1) percent variance per PC
 %   condcol (double, conditions x 3) - RGB colour of each condition, same order as condis
+%   COMMENTED OUT for now (path length sections), kept for when they come back:
 %   pathlen (double, animals x conditions x signals) - path length of each condition's mean over path_ms,
 %     z-scored PC units (raw PC units if znorm = 0), NaN if the animal doesn't have that condition. Only
 %     compare within an animal x signal: each has its own PCA
@@ -128,7 +111,7 @@
 %   filesused (table) - animal, condition, file, trials in file, trials used
 %   run_notes (string) - problems hit along the way, shown in the report at the end
 %   figures (plotsave = 1) - <save_directory>\Figures_Manifold\
-%   Only with run_stats = 1:
+%   COMMENTED OUT for now (optional stats), only with run_stats = 1:
 %   stats_win (table, one row per animal x pair x signal x window x space) - columns:
 %     Animal_Name, DataType (= signal name), Region, Pair, Window, Space (string)
 %     nChans, nTrials_L, nTrials_LW, nTrials_used (double) - nChans = channels used for this signal,
@@ -148,9 +131,9 @@
 %   csv (save_csv = 1) - stats_win, you'll get a file name box
 %
 % Dependencies: NNx_BaseAnalysis*.m (LFP files, ProbeInfo); NNx_TrialRemove_Conditional(_callable).m
-%   (tr_remove mask format); NNx_CSD_flex.m (Functions\Analysis folder, CSD signals); uipickfiles.m;
-%   Statistics Toolbox (pca, signrank, fitlme); Signal Processing Toolbox (butter, zp2sos, filtfilt,
-%   envelope); MATLAB R2019b+ (tiledlayout).
+%   (tr_remove mask format); NNx_CSD_flex.m (Functions\Analysis folder, CSD signals, commented out for now);
+%   uipickfiles.m; Statistics Toolbox (pca, signrank, fitlme); Signal Processing Toolbox (butter, zp2sos,
+%   filtfilt, hilbert); MATLAB R2019b+ (tiledlayout).
 %
 
 %% Setup: Specify Animals, Conditions, and Analysis Info
@@ -165,11 +148,12 @@ mice = {"20260508-p9", "20260509-p10", "20260821-p10"}; % {"20260226-p12", "2026
 %which probe should I analyze? (must match an entry of ProbeInfo.Areas for every mouse, or a probe number like "1")
 region = "V1";
 
-%which signals should I run? (1 = yes, 0 = no)
-LFP = 0; %bandpassed LFP. volume conduction makes channels very alike
-CSD = 0; %current source density of that LFP, more local
-LFPRMS = 1; %RMS envelope of the LFP
-CSDRMS = 0; %RMS envelope of the CSD
+%signals: Hilbert amplitude envelopes of the LFP only for now, one per band (set the bands with hbert_bands below)
+%the other signals are commented out, kept for later (their code is too)
+%LFP = 0; %bandpassed LFP. volume conduction makes channels very alike
+%CSD = 0; %current source density of that LFP, more local
+%LFPhbert = 1; %Hilbert amplitude envelope of the 2-80 Hz LFP
+%CSDRMS = 0; %RMS envelope of the CSD
 
 %spiking is off for now, LFP and CSD only. Kept for later, along with its loading block further down
 %datatype = 2;
@@ -199,7 +183,12 @@ save_directory = 'E:\Roy\Processed Silicon Probe Data\BundledAnimalData\MultAnim
 pca_dims = 3;
     % 2 = PC1 vs PC2
     % 3 = PC1 vs PC2 vs PC3
+%want the PCA trajectories of the trials and trial means?
+plot_pca = 1;
+    % 0 = no
+    % 1 = yes
 plot_ms = [-200 1000]; %ms re: stim, the stretch that gets plotted, and that the PCA is fit to
+fade_start = 0.75; %how washed out each trace starts (0 = full colour the whole way, 1 = starts white). Faded = early, full colour = late
 %colours: each list goes from the first colour at its lowest intensity to the second at its highest
 col_grey = [0.7 0.7 0.7];
 col_black = [0 0 0];
@@ -218,25 +207,29 @@ znorm = 1;
 %norm_soft = 5; %MUA only, spikes/s added to the SD so near-silent channels don't get blown up. Spiking off for now
 
 %LFP cleanup
-lfp_band = [2 100]; %Hz, zero-phase Butterworth bandpass (same as NNx_LFPCorrelation_LvsLW.m). A lower highpass rings further back into the baseline
+%lfp_band = [2 100]; %Hz, zero-phase Butterworth bandpass (same as NNx_LFPCorrelation_LvsLW.m). Only the LFP and CSD signals used this, commented out for now
 filt_pad_ms = 1000; %ms of extra data on each side for the filter to settle
 
-%RMS envelope
-rms_win_ms = 25; %ms, moving RMS window (same as the summary script)
+%RMS envelope (CSD RMS only, commented out for now)
+%rms_win_ms = 25; %ms, moving RMS window (same as the summary script)
 
-%inverse CSD (NNx_CSD_flex.m, same numbers as NNx_ITPC_PhaseReset_singleanimal.m)
-csd_spacing_um = 100; %distance between adjacent ProbeMaps rows, um
-csd_radius_um = 300; %lateral radius of the active column of tissue, um (not the contact size)
-csd_conductivity = 0.3; %extracellular conductivity, S/m
-csd_min_chans = 3; %shanks with fewer kept channels get no CSD, so their channels are left out of the CSD signals
+%Hilbert envelope of the LFP, one signal per band
+%hbert_band = [2 80]; %Hz, old single broadband envelope. Swapped for separate bands so each one is a clean amplitude, and you can see which band carries an L vs LW difference
+hbert_bands = [4 12; 12 30; 30 80]; %Hz, one row per band (theta/alpha, beta, gamma), zero-phase Butterworth bandpass of the raw LFP before the Hilbert transform. A lower highpass rings further back into the baseline
+
+%inverse CSD (NNx_CSD_flex.m, same numbers as NNx_ITPC_PhaseReset_singleanimal.m). CSD signals commented out for now
+%csd_spacing_um = 100; %distance between adjacent ProbeMaps rows, um
+%csd_radius_um = 300; %lateral radius of the active column of tissue, um (not the contact size)
+%csd_conductivity = 0.3; %extracellular conductivity, S/m
+%csd_min_chans = 3; %shanks with fewer kept channels get no CSD, so their channels are left out of the CSD signals
 
 %MUA cleanup (spiking off for now)
 %mua_smooth_ms = 25; %ms, gaussian smoothing window of the binned rate (0 = none)
 
-%%%Path length%%%
-path_ms = [0 3000]; %ms re: stim, the stretch of each condition's mean to measure (has to be inside plot_ms)
-path_nsub = 100; %random picks of trials to average over, for conditions with more trials than the animal's lowest
-path_nperm = 500; %label shuffles for the L vs LW test on the bar plot (lower it if you're in a hurry)
+%%%Path length%%% (path length sections commented out for now)
+%path_ms = [0 3000]; %ms re: stim, the stretch of each condition's mean to measure (has to be inside plot_ms)
+%path_nsub = 100; %random picks of trials to average over, for conditions with more trials than the animal's lowest
+%path_nperm = 500; %label shuffles for the L vs LW test on the bar plot (lower it if you're in a hurry)
 
 %%%Participation ratio%%%
 %want the participation ratio report, split into signal and noise?
@@ -245,10 +238,11 @@ run_pr = 1;
     % 1 = yes
 pr_nsub = 20; %random picks and splits of trials to average over
 
-%which windows should I measure? (also used by the optional stats)
-%baseline is your control: L and LW shouldn't differ much before the stim
-win_names = ["Baseline","Resp","P1","P2"];
-win_ms = [-1500 -500; 75 3000; 75 350; 350 3000]; %ms re: stim, one row per window. Baseline stops well before the stim because the zero-phase LFP filter smears the response backward in time
+%which windows should I measure? Just the whole response for now
+%win_names = ["Baseline","Resp","P1","P2"]; %Baseline, P1 and P2 commented out for now. Baseline is the control: L and LW shouldn't differ much before the stim
+%win_ms = [-1500 -500; 75 3000; 75 350; 350 3000]; %ms re: stim, one row per window. Baseline stops well before the stim because the zero-phase LFP filter smears the response backward in time
+win_names = "Resp";
+win_ms = [75 3000]; %ms re: stim, one row per window
 pr_minfrac = 0.05; %SignalFrac below this means there's too little signal to trust PR_signal: hollow markers, and left out of the signal vs noise tests
 %want the L vs LW shuffle test on signal PR, noise PR, and their ratio? (this is the slow part)
 pr_test = 1;
@@ -256,24 +250,25 @@ pr_test = 1;
     % 1 = yes
 pr_nperm = 100; %label shuffles for that test
 
-%%%Optional stats%%%
+rng_seed = 1; %same shuffles every run, so results repeat
+
+%%%Optional stats%%% (alignment, angles and their figures are commented out for now)
 %want alignment, angles, L vs LW shuffles, and their figures too?
-run_stats = 1;
+%run_stats = 1;
     % 0 = no
     % 1 = yes (the settings below only matter if this is 1)
 
-pc_k = 5; %how many top PCs make up the "subspace" for alignment and angles
-n_perm = 1000; %label shuffles for the permutation test (lower it if you're in a hurry)
-n_sub = 50; %subsamples to average the real L vs LW numbers over when trial counts differ
-min_trials = 10; %skip an animal x pair with fewer trials than this in L or LW
-rng_seed = 1; %same shuffles every run, so results repeat
+%pc_k = 5; %how many top PCs make up the "subspace" for alignment and angles
+%n_perm = 1000; %label shuffles for the permutation test (lower it if you're in a hurry)
+%n_sub = 50; %subsamples to average the real L vs LW numbers over when trial counts differ
+%min_trials = 10; %skip an animal x pair with fewer trials than this in L or LW
 
 %trial-mean trajectories, PC time courses, spectra? (one figure per animal x pair x signal)
-plot_traj = 1;
+%plot_traj = 1;
 %paired L vs LW across animals? (one PR figure and one alignment figure per pair x signal)
-plot_summary = 1;
+%plot_summary = 1;
 %save the stats table as a csv for R?
-save_csv = 0;
+%save_csv = 0;
     % 0 = no
     % 1 = yes (you'll get a file name box)
 
@@ -291,11 +286,16 @@ nwin = numel(win_names);
 spacenames = ["TrialAvg","SingleTrial"];
 
 %which signals are on? s below always counts through just these
-allsignames = ["LFP","CSD","LFP_RMS","CSD_RMS"];
-sigcode = find([LFP CSD LFPRMS CSDRMS] == 1); %1 = LFP, 2 = CSD, 3 = LFP RMS, 4 = CSD RMS
-signames = allsignames(sigcode);
+allsignames = ["LFP","CSD","LFP_hbert","CSD_RMS"];
+%sigcode = find([LFP CSD LFPhbert CSDRMS] == 1); %1 = LFP, 2 = CSD, 3 = LFP Hilbert envelope, 4 = CSD RMS. Signal flags commented out for now
+%sigcode = 3; %LFP_hbert only (one 2-80 Hz band). Swapped for one signal per row of hbert_bands
+%signames = allsignames(sigcode);
+nhb = size(hbert_bands,1); %how many Hilbert bands
+sigcode = 3*ones(1,nhb); %3 = LFP Hilbert envelope, once per band
+sigband = 1:nhb; %which row of hbert_bands each signal uses
+signames = "LFP_hbert_" + hbert_bands(:,1)' + "to" + hbert_bands(:,2)'; %e.g. "LFP_hbert_4to12", the name in every table and figure
 nsig = numel(signames);
-needCSD = CSD == 1 || CSDRMS == 1; %skip the CSD maths if nobody wants it
+%needCSD = CSD == 1 || CSDRMS == 1; %skip the CSD maths if nobody wants it. CSD commented out for now
 
 if numel(condis_L) == numel(condis_LW)
     pairnames = string(condis_L) + " vs " + string(condis_LW); %one pair per L/LW match
@@ -390,7 +390,8 @@ for m = 1:nmice
     end
     chanlist{m} = setdiff(nonzeros(pinfos{m}.ProbeMaps{prb}), chremove(:)); %sorted column of raw channel IDs
 
-    %NNx_CSD_flex wants channels in ProbeIds order, so work out how to get there and back
+    %NNx_CSD_flex wants channels in ProbeIds order, so work out how to get there and back. CSD commented out for now
+    %{
     if needCSD == true
         pids = pinfos{m}.ProbeIds{prb}(:);
         pids = pids(ismember(pids,chremove(:)) == false); %ProbeIds minus Ch_Remove, NNx_CSD_flex's order
@@ -399,6 +400,7 @@ for m = 1:nmice
         end
         [~,csdorder{m}] = ismember(pids,chanlist{m});
     end
+    %}
 end
 clear pinfo
 
@@ -407,15 +409,23 @@ clear pinfo
 
 %time bins kept (the plot stretch, plus the PR/stats windows if you want those), plus padding so filter/envelope edges stay outside
 keep_ms = plot_ms;
-if run_pr == 1 || run_stats == 1
+%if run_pr == 1 || run_stats == 1 %optional stats commented out for now
+if run_pr == 1
     keep_ms = [min([win_ms(:); plot_ms(:)]) max([win_ms(:); plot_ms(:)])];
 end
 nbins = ceil((keep_ms(2)-keep_ms(1))/bin_ms); %bins kept
 time_bins = keep_ms(1) + bin_ms*((1:nbins)-0.5); %bin centres, ms re: stim
 
 padbins = ceil(filt_pad_ms/bin_ms);
-[z,p,k] = butter(2, lfp_band/(1000/2), 'bandpass'); %2nd order per edge, as the summary script
-[lfp_sos,lfp_g] = zp2sos(z,p,k); %second-order sections, stable at low cutoffs
+%[z,p,k] = butter(2, lfp_band/(1000/2), 'bandpass'); %2nd order per edge, as the summary script. LFP and CSD signals commented out for now
+%[lfp_sos,lfp_g] = zp2sos(z,p,k); %second-order sections, stable at low cutoffs
+%one bandpass per Hilbert band
+hbert_sos = cell(1,nhb); %{band} second-order sections
+hbert_g = zeros(1,nhb); %gain of each
+for j = 1:nhb
+    [z,p,k] = butter(2, hbert_bands(j,:)/(1000/2), 'bandpass'); %2nd order per edge
+    [hbert_sos{j},hbert_g(j)] = zp2sos(z,p,k); %second-order sections, stable at low cutoffs
+end
 %spiking off for now
 %padbins = ceil(2*mua_smooth_ms/bin_ms);
 nbins_pad = nbins + 2*padbins; %bins including padding
@@ -449,40 +459,48 @@ for con = 1:ncond
         dat = d.stim_lfp_stimchunks(trs,samps,chs); %[good trials x samples x kept channels]
         clear d
         [ntr,nsamp,nch] = size(dat);
-        X = reshape(permute(dat,[2 1 3]), nsamp, []); %[samples x (trials*channels)], filtfilt works down columns
-        X = filtfilt(lfp_sos, lfp_g, X); %zero phase
-        lfpflt = permute(reshape(X, nsamp, ntr, nch), [2 1 3]); %back to [trials x samples x channels], uV
-        clear dat
+        %2-100 Hz LFP, only the LFP and CSD signals used it. Commented out for now
+        %X = reshape(permute(dat,[2 1 3]), nsamp, []); %[samples x (trials*channels)], filtfilt works down columns
+        %X = filtfilt(lfp_sos, lfp_g, X); %zero phase
+        %lfpflt = permute(reshape(X, nsamp, ntr, nch), [2 1 3]); %back to [trials x samples x channels], uV
 
-        %inverse CSD of the bandpassed LFP, trial by trial and shank by shank. NaN on shanks with too few channels
+        %inverse CSD of the bandpassed LFP, trial by trial and shank by shank. NaN on shanks with too few channels. Commented out for now
+        %{
         if needCSD == true
             csdflt = nan(ntr,nsamp,nch);
             csdflt(:,:,csdorder{m}) = NNx_CSD_flex(lfpflt(:,:,csdorder{m}), pinfos{m}, mouseProbe(m), 'ChRemove', true, ...
                 'spacing', csd_spacing_um, 'radius', csd_radius_um, 'conductivity', csd_conductivity, 'minchans', csd_min_chans);
         end
+        %}
 
         %make each signal that's switched on, then bin it and pool it
         for s = 1:nsig
             switch sigcode(s)
-                case 1 %LFP
-                    sigdat = lfpflt;
-                case 2 %CSD
-                    sigdat = csdflt;
-                case 3 %LFP RMS
-                    Y = envelope(X, rms_win_ms, 'rms'); %X is still the bandpassed LFP as [samples x (trials*channels)]
-                    sigdat = permute(reshape(Y, nsamp, ntr, nch), [2 1 3]);
-                case 4 %CSD RMS
-                    csdcols = reshape(permute(csdflt,[2 1 3]), nsamp, []); %[samples x (trials*channels)]
-                    hascsd = all(isfinite(csdcols),1); %envelope can't take NaN, so skip the channels with no CSD
-                    Y = nan(size(csdcols));
-                    Y(:,hascsd) = envelope(csdcols(:,hascsd), rms_win_ms, 'rms');
-                    sigdat = permute(reshape(Y, nsamp, ntr, nch), [2 1 3]);
-                    clear csdcols
+                %LFP and CSD commented out for now
+                %case 1 %LFP
+                %    sigdat = lfpflt;
+                %case 2 %CSD
+                %    sigdat = csdflt;
+                case 3 %LFP Hilbert envelope of this signal's band
+                    sigdat = zeros(ntr, nsamp, nch, 'single'); %[trials x samples x channels], single halves the memory
+                    for ch = 1:nch %one channel at a time, so the complex hilbert output stays small
+                        xb = filtfilt(hbert_sos{sigband(s)}, hbert_g(sigband(s)), dat(:,:,ch)'); %[samples x trials] raw LFP, zero phase, this band only
+                        sigdat(:,:,ch) = abs(hilbert(xb))'; %amplitude envelope, uV. Edge wobble lands in the padding, which gets cut
+                    end
+                    clear xb
+                %CSD RMS commented out for now
+                %case 4 %CSD RMS
+                %    csdcols = reshape(permute(csdflt,[2 1 3]), nsamp, []); %[samples x (trials*channels)]
+                %    hascsd = all(isfinite(csdcols),1); %envelope can't take NaN, so skip the channels with no CSD
+                %    Y = nan(size(csdcols));
+                %    Y(:,hascsd) = envelope(csdcols(:,hascsd), rms_win_ms, 'rms');
+                %    sigdat = permute(reshape(Y, nsamp, ntr, nch), [2 1 3]);
+                %    clear csdcols
             end
             binned = reshape(mean(reshape(single(sigdat),ntr,perbin,nbins_pad,nch),2),ntr,nbins_pad,nch); %mean per bin
             stimdat{m,con,s} = cat(1, stimdat{m,con,s}, binned(:,inkeep,:)); %pool the files of the same animal + condition
         end
-        clear X Y lfpflt csdflt sigdat binned
+        clear dat X Y lfpflt csdflt sigdat binned
 
         %spiking off for now, every signal above comes from the LFP. Kept for later
         %{
@@ -512,13 +530,13 @@ fprintf('execution time: %.2f seconds\n', elapsed_time);
 
 %% Data Visualization: PCA of all trials, coloured by L or LW
 
-%one figure per animal, one column per signal. Every condition you picked goes into one PCA, so they all
-%share the same axes. Each trial is one line through PC space
+%one figure per animal, one column per signal (plot_pca = 1). Every condition you picked goes into one PCA, so
+%they all share the same axes. Each trial is one line through PC space. The colours set up here are used by the PR figures too
 inplot = find(time_bins >= plot_ms(1) & time_bins < plot_ms(2)); %bins to show
 tplot = time_bins(inplot); %ms
 [~,onset_bin] = min(abs(tplot)); %bin closest to stim onset, marked on the means
-col_L = [0 0 0]; %black = light (optional stats figures)
-col_LW = [0.85 0.15 0.15]; %red = light + whisker (optional stats figures)
+col_L = [0 0 0]; %black = light (PR figures)
+col_LW = [0.85 0.15 0.15]; %red = light + whisker (PR figures)
 trial_alpha = 0.3; %how see-through the single trial lines are (0 = invisible, 1 = solid)
 
 %colour of each condition: L goes grey to black, LW goes pink to red, in the order you listed them.
@@ -533,118 +551,140 @@ for j = 1:numel(condis_LW)
     condcol(numel(condis_L)+j,:) = col_pink + fracLW(j)*(col_red - col_pink);
 end
 
-pcscore = cell(nmice,nsig); %{animal x signal} [trials x plot bins x pca_dims]
-pccond = cell(nmice,nsig); %{animal x signal} [trials x 1] which condition each trial is, index into condis
-pcexpl = cell(nmice,nsig); %{animal x signal} percent variance per PC
-
-disp('PCA: Making some pictures for you')
-for m = 1:nmice
-    %which conditions does this animal have?
-    havecond = [];
-    for con = 1:ncond
-        if isempty(stimdat{m,con,1}) == false
-            havecond(end+1) = con; %#ok<SAGROW>
-        end
-    end
-    if isempty(havecond) == true
-        run_notes(end+1) = mice(m) + ": no PCA plot, no files picked"; %#ok<SAGROW>
-        continue
-    end
-
-    figure()
-    set(gcf, 'Position', get(0, 'Screensize'));
-    tiledlayout(2,nsig) %top row = all trials, bottom row = means, one column per signal
-
-    for s = 1:nsig
-        %stick all of this animal's conditions together, just the plot stretch
-        pooled = [];
-        trcond = [];
-        for con = havecond
-            pooled = cat(1, pooled, stimdat{m,con,s}(:,inplot,:)); %[all trials x plot bins x channels]
-            trcond = [trcond; repmat(con,size(stimdat{m,con,s},1),1)]; %#ok<AGROW>
-        end
-
-        %channels on shanks with too few kept channels have no CSD, so they sit this signal out
-        chgood = all(isfinite(pooled),[1 2]);
-        if all(chgood) == false
-            run_notes(end+1) = mice(m) + ", " + signames(s) + ": left out " + nnz(chgood == false) + " channels with no data (too few kept channels on their shank)"; %#ok<SAGROW>
-            pooled = pooled(:,:,chgood);
-        end
-        [ntr,nb,nch] = size(pooled);
-
-        %all trials end to end, then one PCA, so every condition shares the same axes
-        Xall = double(reshape(pooled,[],nch)); %[(trials*bins) x channels]
-        if znorm == 1
-            Xall = Xall ./ std(Xall,0,1); %z-score over all conditions together. PCA takes out the mean
-        end
-        [~,score,latent] = pca(Xall,'NumComponents',pca_dims); %score is [(trials*bins) x pca_dims]
-        pcscore{m,s} = reshape(score,ntr,nb,pca_dims); %[trials x plot bins x pca_dims]
-        pccond{m,s} = trcond;
-        pcexpl{m,s} = 100*latent/sum(latent); %percent variance per PC
-
-        %top panel: every trial, thin and see-through. Random drawing order so no colour always sits on top
-        nexttile(s)
-        hold on
-        for tr = randperm(ntr)
-            trcol = [condcol(trcond(tr),:) trial_alpha];
-            trialpc = reshape(pcscore{m,s}(tr,:,:),nb,pca_dims); %[plot bins x pca_dims]
-            if pca_dims == 3
-                plot3(trialpc(:,1),trialpc(:,2),trialpc(:,3),'Color',trcol,'LineWidth',0.5)
-            else
-                plot(trialpc(:,1),trialpc(:,2),'Color',trcol,'LineWidth',0.5)
-            end
-        end
-
-        %invisible lines, just so the legend has solid colours
-        hcon = gobjects(1,numel(havecond));
-        labs = cell(1,numel(havecond));
-        for j = 1:numel(havecond)
-            hcon(j) = plot(nan,nan,'Color',condcol(havecond(j),:),'LineWidth',2);
-            labs{j} = [condis{havecond(j)} ', ' num2str(sum(trcond == havecond(j))) ' trials'];
-        end
-        hold off
-        legend(hcon,labs,'Location','best','Interpreter','none')
-        title([char(signames(s)) ', ' num2str(nch) ' channels, all trials'],'Interpreter','none')
-
-        %bottom panel: same PCs, just each condition's mean, zoomed in (it's tiny next to the single trials)
-        nexttile(nsig+s)
-        hold on
-        for con = havecond
-            meancon = reshape(mean(pcscore{m,s}(trcond == con,:,:),1),nb,pca_dims); %[plot bins x pca_dims]
-            if pca_dims == 3
-                plot3(meancon(:,1),meancon(:,2),meancon(:,3),'Color',condcol(con,:),'LineWidth',1.5)
-                plot3(meancon(onset_bin,1),meancon(onset_bin,2),meancon(onset_bin,3),'o','Color',condcol(con,:),'MarkerFaceColor',condcol(con,:))
-            else
-                plot(meancon(:,1),meancon(:,2),'Color',condcol(con,:),'LineWidth',1.5)
-                plot(meancon(onset_bin,1),meancon(onset_bin,2),'o','Color',condcol(con,:),'MarkerFaceColor',condcol(con,:))
-            end
-        end
-        hold off
-        title([char(signames(s)) ', mean of each condition'],'Interpreter','none')
-
-        %same axis labels on both panels
-        for panel = [s nsig+s]
-            nexttile(panel)
-            xlabel(['PC1 (' num2str(pcexpl{m,s}(1),'%.1f') '%)'])
-            ylabel(['PC2 (' num2str(pcexpl{m,s}(2),'%.1f') '%)'])
-            if pca_dims == 3
-                zlabel(['PC3 (' num2str(pcexpl{m,s}(3),'%.1f') '%)'])
-                view(3)
-                grid on
-            end
-        end
-    end
-    sgtitle([char(mice(m)) ' ' char(region) ': L grey to black, LW pink to red, low to high intensity, dot = stim onset'],'Interpreter','none')
-
-    if plotsave == 1
-        fname = sprintf([char(mice(m)) '-' 'trialPCA']);
-        savefig(gcf,[save_directory '\Figures_Manifold\' fname],'compact')
-    end
+%which way is the trace going? each condition's colour fades in over time: washed out early, full colour late
+tracecol = cell(1,ncond); %{condition} [plot bins x RGB]
+for con = 1:ncond
+    fadecol = condcol(con,:) + fade_start*(1 - condcol(con,:)); %washed out version of the condition colour, the start of the trace
+    tracecol{con} = fadecol + linspace(0,1,numel(inplot))'*(condcol(con,:) - fadecol); %faded at the first bin to full colour at the last
 end
-clear pooled Xall score
+
+if plot_pca == 1
+    pcscore = cell(nmice,nsig); %{animal x signal} [trials x plot bins x pca_dims]
+    pccond = cell(nmice,nsig); %{animal x signal} [trials x 1] which condition each trial is, index into condis
+    pcexpl = cell(nmice,nsig); %{animal x signal} percent variance per PC
+
+    disp('PCA: Making some pictures for you')
+    for m = 1:nmice
+        %which conditions does this animal have?
+        havecond = [];
+        for con = 1:ncond
+            if isempty(stimdat{m,con,1}) == false
+                havecond(end+1) = con; %#ok<SAGROW>
+            end
+        end
+        if isempty(havecond) == true
+            run_notes(end+1) = mice(m) + ": no PCA plot, no files picked"; %#ok<SAGROW>
+            continue
+        end
+
+        figure()
+        set(gcf, 'Position', get(0, 'Screensize'));
+        tiledlayout(2,nsig) %top row = all trials, bottom row = means, one column per signal
+
+        for s = 1:nsig
+            %stick all of this animal's conditions together, just the plot stretch
+            pooled = [];
+            trcond = [];
+            for con = havecond
+                pooled = cat(1, pooled, stimdat{m,con,s}(:,inplot,:)); %[all trials x plot bins x channels]
+                trcond = [trcond; repmat(con,size(stimdat{m,con,s},1),1)]; %#ok<AGROW>
+            end
+
+            %channels on shanks with too few kept channels have no CSD, so they sit this signal out
+            chgood = all(isfinite(pooled),[1 2]);
+            if all(chgood) == false
+                run_notes(end+1) = mice(m) + ", " + signames(s) + ": left out " + nnz(chgood == false) + " channels with no data (too few kept channels on their shank)"; %#ok<SAGROW>
+                pooled = pooled(:,:,chgood);
+            end
+            [ntr,nb,nch] = size(pooled);
+
+            %all trials end to end, then one PCA, so every condition shares the same axes
+            Xall = double(reshape(pooled,[],nch)); %[(trials*bins) x channels]
+            if znorm == 1
+                Xall = Xall ./ std(Xall,0,1); %z-score over all conditions together. PCA takes out the mean
+            end
+            [~,score,latent] = pca(Xall,'NumComponents',pca_dims); %score is [(trials*bins) x pca_dims]
+            pcscore{m,s} = reshape(score,ntr,nb,pca_dims); %[trials x plot bins x pca_dims]
+            pccond{m,s} = trcond;
+            pcexpl{m,s} = 100*latent/sum(latent); %percent variance per PC
+
+            %top panel: every trial, thin and see-through, faded at the start. Random drawing order so no colour always sits on top
+            nexttile(s)
+            hold on
+            for tr = randperm(ntr)
+                %trcol = [condcol(trcond(tr),:) trial_alpha]; %old: one flat colour per trial, no way to tell which end is which
+                trialpc = reshape(pcscore{m,s}(tr,:,:),nb,pca_dims); %[plot bins x pca_dims]
+                %a patch with no face and interpolated edge colours is a line whose colour changes along it. The NaN stops it closing into a loop
+                if pca_dims == 3
+                    patch('XData',[trialpc(:,1); NaN],'YData',[trialpc(:,2); NaN],'ZData',[trialpc(:,3); NaN], ...
+                        'FaceVertexCData',[tracecol{trcond(tr)}; 1 1 1],'FaceColor','none','EdgeColor','interp','EdgeAlpha',trial_alpha,'LineWidth',0.5)
+                else
+                    patch('XData',[trialpc(:,1); NaN],'YData',[trialpc(:,2); NaN], ...
+                        'FaceVertexCData',[tracecol{trcond(tr)}; 1 1 1],'FaceColor','none','EdgeColor','interp','EdgeAlpha',trial_alpha,'LineWidth',0.5)
+                end
+            end
+
+            %invisible lines, just so the legend has solid colours
+            hcon = gobjects(1,numel(havecond));
+            labs = cell(1,numel(havecond));
+            for j = 1:numel(havecond)
+                hcon(j) = plot(nan,nan,'Color',condcol(havecond(j),:),'LineWidth',2);
+                labs{j} = [condis{havecond(j)} ', ' num2str(sum(trcond == havecond(j))) ' trials'];
+            end
+            hold off
+            legend(hcon,labs,'Location','best','Interpreter','none')
+            title([char(signames(s)) ', ' num2str(nch) ' channels, all trials'],'Interpreter','none')
+
+            %bottom panel: same PCs, just each condition's mean, zoomed in (it's tiny next to the single trials)
+            %faded = early, full colour = late, dot = stim onset, square = end of the plot stretch
+            nexttile(nsig+s)
+            hold on
+            for con = havecond
+                meancon = reshape(mean(pcscore{m,s}(trcond == con,:,:),1),nb,pca_dims); %[plot bins x pca_dims]
+                if pca_dims == 3
+                    %plot3(meancon(:,1),meancon(:,2),meancon(:,3),'Color',condcol(con,:),'LineWidth',1.5) %old: one flat colour
+                    patch('XData',[meancon(:,1); NaN],'YData',[meancon(:,2); NaN],'ZData',[meancon(:,3); NaN], ...
+                        'FaceVertexCData',[tracecol{con}; 1 1 1],'FaceColor','none','EdgeColor','interp','LineWidth',2)
+                    plot3(meancon(onset_bin,1),meancon(onset_bin,2),meancon(onset_bin,3),'o','Color',condcol(con,:),'MarkerFaceColor',condcol(con,:))
+                    plot3(meancon(end,1),meancon(end,2),meancon(end,3),'s','Color',condcol(con,:),'MarkerFaceColor',condcol(con,:),'MarkerSize',8)
+                else
+                    %plot(meancon(:,1),meancon(:,2),'Color',condcol(con,:),'LineWidth',1.5) %old: one flat colour
+                    patch('XData',[meancon(:,1); NaN],'YData',[meancon(:,2); NaN], ...
+                        'FaceVertexCData',[tracecol{con}; 1 1 1],'FaceColor','none','EdgeColor','interp','LineWidth',2)
+                    plot(meancon(onset_bin,1),meancon(onset_bin,2),'o','Color',condcol(con,:),'MarkerFaceColor',condcol(con,:))
+                    plot(meancon(end,1),meancon(end,2),'s','Color',condcol(con,:),'MarkerFaceColor',condcol(con,:),'MarkerSize',8)
+                end
+            end
+            hold off
+            title([char(signames(s)) ', mean of each condition'],'Interpreter','none')
+
+            %same axis labels on both panels
+            for panel = [s nsig+s]
+                nexttile(panel)
+                xlabel(['PC1 (' num2str(pcexpl{m,s}(1),'%.1f') '%)'])
+                ylabel(['PC2 (' num2str(pcexpl{m,s}(2),'%.1f') '%)'])
+                if pca_dims == 3
+                    zlabel(['PC3 (' num2str(pcexpl{m,s}(3),'%.1f') '%)'])
+                    view(3)
+                    grid on
+                end
+            end
+        end
+        sgtitle({[char(mice(m)) ' ' char(region) ': L grey to black, LW pink to red, low to high intensity'], ...
+            ['direction: faded = early, full colour = late, dot = stim onset, square = ' num2str(plot_ms(2)) ' ms']},'Interpreter','none')
+
+        if plotsave == 1
+            fname = sprintf([char(mice(m)) '-' 'trialPCA']);
+            savefig(gcf,[save_directory '\Figures_Manifold\' fname],'compact')
+        end
+    end
+    clear pooled Xall score
+end
 
 
 %% Data Analysis: path length of each condition's mean trajectory
+%commented out for now (script trimmed to PR on LFP_hbert), kept for later
+%{
 
 %path length = how far the condition's mean travels through PC space: add up the straight-line distance
 %from each time bin to the next, using the pca_dims PCs you see in the plots.
@@ -700,8 +740,12 @@ for m = 1:nmice
     end
 end
 
+%}
+
 
 %% Data Analysis: is the path length different in L vs LW? (shuffle test)
+%commented out for now (script trimmed to PR on LFP_hbert), kept for later
+%{
 
 %for each L/LW pair: is LW's path longer or shorter than L's, by more than you'd get from which trials
 %happened to land in which condition? Shuffle the pair's trials between L and LW path_nperm times and see how
@@ -835,8 +879,12 @@ end
 elapsed_time = toc;
 fprintf('execution time: %.2f seconds\n', elapsed_time);
 
+%}
+
 
 %% Data Visualization: bar plot of path lengths
+%commented out for now (script trimmed to PR on LFP_hbert), kept for later
+%{
 
 %one row per animal, one column per signal, same colours as the PCA plots, L and LW side by side at each
 %intensity. Above each pair: * = LW differs from L in the shuffle test (q < 0.05), ns = it doesn't.
@@ -897,8 +945,12 @@ if plotsave == 1
     savefig(gcf,[save_directory '\Figures_Manifold\' fname],'compact')
 end
 
+%}
+
 
 %% Data Analysis: mixed model of path length across animals
+%commented out for now (script trimmed to PR on LFP_hbert), kept for later
+%{
 
 %does LW change path length overall, treating animals as a sample of mice? Each animal gets its own baseline and
 %its own LW effect, as in NNx_LFPCorrelation_LvsLW.m: log(path) ~ Group (+ Pair) + (1 + Group|Animal). Log, so the
@@ -945,8 +997,12 @@ for s = 1:nsig
         'VariableNames',{'DataType','nAnimals','LWoverL','CI_lo','CI_hi','DF','p'})]; %#ok<AGROW>
 end
 
+%}
+
 
 %% Data Visualization: mean path length of all animals together
+%commented out for now (script trimmed to PR on LFP_hbert), kept for later
+%{
 
 %one panel per signal. Bars = mean over animals, error bars = SEM, grey lines = each animal's L to LW.
 %each animal has its own PCA and channels, so the units aren't exactly the same between animals: the lines
@@ -1016,8 +1072,12 @@ if plotsave == 1
     savefig(gcf,[save_directory '\Figures_Manifold\' fname],'compact')
 end
 
+%}
+
 
 %% Data Visualization: CSD RMS means, L vs LW, one panel per light intensity
+%commented out for now (CSD signals are off), kept for later
+%{
 
 %same PCs as the PCA plots, so the panels can be compared. One figure per animal, one panel per L/LW pair.
 %L and LW in a panel use the same number of trials (a random pick), so neither looks smoother from having more
@@ -1095,6 +1155,8 @@ else
         end
     end
 end
+
+%}
 
 
 %% Data Analysis: participation ratio of each condition, split into signal and noise
@@ -1621,8 +1683,10 @@ end
 
 
 %Now beginning the optional stats section, everything from here to the report needs run_stats = 1
+%all of it is commented out for now (script trimmed to PR on LFP_hbert), kept for later
 
 %% Data Analysis (optional): PR, alignment, and angles in L vs LW, each against shuffled labels
+%{
 
 if run_stats == 1
     stats_win = table();
@@ -1756,8 +1820,11 @@ if run_stats == 1
     fprintf('execution time: %.2f seconds\n', elapsed_time);
 end
 
+%}
+
 
 %% Data Analysis (optional): across animals, paired L vs LW
+%{
 
 if run_stats == 1
     stats_paired = table();
@@ -1780,8 +1847,11 @@ if run_stats == 1
     end
 end
 
+%}
+
 
 %% Data Visualization (optional): L and LW trial means in shared PC space
+%{
 
 if run_stats == 1 && plot_traj == 1
     trajL = cell(nmice,npairs,nsig); %{animal x pair x signal} [plot bins x pc_k] shared-PC scores
@@ -1880,8 +1950,11 @@ if run_stats == 1 && plot_traj == 1
     end
 end
 
+%}
+
 
 %% Data Visualization (optional): paired L vs LW across animals
+%{
 
 if run_stats == 1 && plot_summary == 1 && height(stats_win) > 0
     %what each figure shows: {column A, column B, x labels, y label, file name part}
@@ -1922,8 +1995,11 @@ if run_stats == 1 && plot_summary == 1 && height(stats_win) > 0
     end
 end
 
+%}
+
 
 %% Save the stats as a csv for R (optional)
+%{
 
 if run_stats == 1 && save_csv == 1
     [csvname,csvpath] = uiputfile(fullfile(csv_directory,'ManifoldPCA_LvsLW.csv'),'Name the csv');
@@ -1935,16 +2011,19 @@ if run_stats == 1 && save_csv == 1
     end
 end
 
+%}
+
 
 %% Post-run report
 
 disp('---------- Manifold report ----------')
 disp(filesused)
-disp(pathres)
-disp(stats_path)
-disp(stats_path_paired)
-disp(stats_path_lme)
-disp('Path test: shuffles trials, so drift between files also counts. Check it with path_ms before the stim. p is uncorrected, q is corrected within a signal.')
+%path length sections commented out for now
+%disp(pathres)
+%disp(stats_path)
+%disp(stats_path_paired)
+%disp(stats_path_lme)
+%disp('Path test: shuffles trials, so drift between files also counts. Check it with path_ms before the stim. p is uncorrected, q is corrected within a signal.')
 if run_pr == 1
     disp(prres)
     disp(stats_pr_signoise)
@@ -1954,11 +2033,14 @@ if run_pr == 1
     end
     disp('PR: only trust PR_signal where SignalFrac is well above 0. PR depends on channel count, so compare within an animal.')
 end
+%optional stats commented out for now
+%{
 if run_stats == 1
     disp(stats_win(:,{'Animal_Name','DataType','Pair','Window','Space','nChans','nTrials_used','PR_L','PR_LW','PR_diff','PR_p','Align','Align_null','Align_p','Angle','Angle_null','Angle_p'}))
     disp(stats_paired)
     disp('P values are uncorrected across signals, windows and measures.')
 end
+%}
 for i = 1:numel(run_notes)
     disp(run_notes(i))
 end
