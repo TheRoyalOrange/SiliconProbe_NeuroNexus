@@ -7,7 +7,8 @@ function oscillation_plotEvents(ProbeInfo, oscillations, probeSnippets)
 %   shape as oshkosh_detect_funct.m's own "plot all events across channels"
 %   figure (each channel plotted as trace(i) - offset*(i-1)), but showing
 %   only the one event currently selected instead of a whole file's worth
-%   of events at once. Left/right arrow keys move to the previous/next
+%   of events at once. Channels here sit 250 uV apart (oshkosh's figure
+%   uses 500), so each event's activity is easier to see. Left/right arrow keys move to the previous/next
 %   event; up/down arrow keys cycle the color scheme used to color
 %   channels, through two kinds of scheme:
 %   (1) Shank (discrete/qualitative colormap: lines) -
@@ -244,7 +245,8 @@ function redraw(fig)
     scheme_mode = ud.schemeMode{ud.cmapIdx};
     channel_colors = getChannelColors(ud);
     plot_order = getPlotOrder(ud);
-    offset_step = 500;
+    % offset_step = 500; %too squashed to tell if oshkosh events are real
+    offset_step = 250; %uV between channels
     window_len = size(snippet,2);
     file_idx = ud.oscillations.prbEvent_file_index{p}(k);
     ext_start = ud.oscillations.prbEvent_ext_timestamps{p}(k,1);
