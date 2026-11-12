@@ -23,8 +23,13 @@ octave-workspace
 # /data/raw/
 
 # Spike sorting folder: holds raw recordings (3.9 GB recording.dat) and sorter output.
-# Left out of the repo for now, scripts here have no GitHub backup yet.
-SpikeSorting/
+# Only the sorting notebook is tracked for now; the other scripts here have no GitHub backup yet.
+# (Its env/tools live outside the repo in C:\SpikeSorting_mainTools.)
+SpikeSorting/*
+!SpikeSorting/NNx_SpikeSorting.ipynb
+
+# Old in-repo copy of C:\SpikeSorting_mainTools (1.8 GB venv), to be deleted
+SpikeSorting_mainTools/
 
 # === Editor / environment ===
 .vscode/

@@ -26,6 +26,13 @@ start of every Claude Code session in this repo.
    on the preprocessed output, and neither depends on the other:
    - `Functional_Connectivity/` — connectivity measures such as ITPC per animal/session. 
    - `Summarize_MultiAnimal/` — cross-animal/condition aggregation and summary. This data is output as csv to plot with R
+3. `SpikeSorting/` — separate branch from raw data: `NNx_SpikeSorting.ipynb` (Python/SpikeInterface)
+   sorts raw recordings into units (Kilosort4, Lupin, etc.), curates them, and writes spike trains,
+   Phy output and condition info that the MATLAB scripts in that folder read. Only the notebook is
+   tracked in git; the rest of the folder (raw data, sorter output, older scripts) is git-ignored.
+   Its Python env and sorter tools are NOT in the repo: they live in `C:\SpikeSorting_mainTools`
+   (venv `EPA_sorting`, `wave_clus`, `Kilosort-main`). Run the notebook with the kernel
+   `C:\SpikeSorting_mainTools\EPA_sorting\Scripts\python.exe` and don't move that folder.
 
 ## Data contracts: header comment convention
 
