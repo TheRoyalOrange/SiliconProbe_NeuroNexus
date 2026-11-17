@@ -157,8 +157,8 @@ region = "V1";
 %MATCHING ORDER, because they are paired by position (1st with 1st: L_4 vs LW_4, 2nd with 2nd: L_8 vs LW_8).
 %Conditions are never pooled within a group; the groups are compared inside each pair
 grpnames = {'L','LW'};
-condis_grp{1} = {'L_4','L_8'}; %conditions in group 1
-condis_grp{2} = {'LW_4','LW_8'}; %conditions in group 2
+condis_grp{1} = {'L_4','L_8','L_12','L_15'}; %conditions in group 1
+condis_grp{2} = {'LW_4','LW_8', 'LW_12', 'LW_15'}; %conditions in group 2
 
 %leave out trials flagged under these conditional trial set names? (made with NNx_TrialRemove_Conditional.m,
 %e.g. {"whisker_twitch_artifact"}). {} = no, only tr_remove
@@ -170,8 +170,8 @@ lfp_dir = 'E:\Roy\Processed Silicon Probe Data\LFP';
 probeinfo_dir = 'E:\Roy\Processed Silicon Probe Data\ProbeInfo';
 
 %Where should I, Matlab, put the results? (Desktop while we're testing)
-save_directory = 'C:\Users\rmissa\Desktop\StochRes_test'; %results in \StochRes\<animal>, figures in \Figures_StochRes\<animal>
-%save_directory = 'E:\Roy\Processed Silicon Probe Data';
+%save_directory = 'C:\Users\rmissa\Desktop\StochRes_test'; %results in \StochRes\<animal>, figures in \Figures_StochRes\<animal>
+save_directory = 'E:\Roy\Processed Silicon Probe Data\StochRes';
 
 %%%Analysis details%%%
 stim_onset_30k = 150001; %sample of stimulus onset (0 ms) in stim_spike_stimchunks, 30 kHz
@@ -293,8 +293,9 @@ plot_align = 1;
 plot_corr = 1;
 %S1 LFP spectra vs V1 spike-rate spectra? (do_S1 = 1)
 plot_lfpcoh = 1;
-%save the figures?
+%save the figures? (as PNGs; a figure with a slider gets one PNG per panel, e.g. ...-psd_tot-L_8_vs_LW_8.png)
 plotsave = 1;
+png_res = 150; %dpi of the saved PNGs (a full-screen figure -> ~2900 x 1600 px)
 
 %delete big in-between variables as we go? (saves memory)
 mr_clean = 1;
@@ -767,7 +768,8 @@ if plot_respchans == 1
 
     if qc_plotsave == 1
         fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'resptrials_channels']);
-        savefig(gcf,[qc_dir '\' fname],'compact')
+        % savefig(gcf,[qc_dir '\' fname],'compact') %commented out: PNGs for now
+        exportgraphics(gcf,[qc_dir '\' fname '.png'],'Resolution',png_res)
     end
 end
 
@@ -835,7 +837,8 @@ if plot_respcheck == 1
 
         if qc_plotsave == 1
             fname = sprintf([animal '-' condis{con} '-' ProbeInfo.Areas{prb} '_Probe' '-' 'resptrials_trials']);
-            savefig(gcf,[qc_dir '\' fname],'compact')
+            % savefig(gcf,[qc_dir '\' fname],'compact') %commented out: PNGs for now
+            exportgraphics(gcf,[qc_dir '\' fname '.png'],'Resolution',png_res)
         end
     end
 
@@ -862,7 +865,8 @@ if plot_respcheck == 1
 
     if qc_plotsave == 1
         fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'resptrials_templates']);
-        savefig(gcf,[qc_dir '\' fname],'compact')
+        % savefig(gcf,[qc_dir '\' fname],'compact') %commented out: PNGs for now
+        exportgraphics(gcf,[qc_dir '\' fname '.png'],'Resolution',png_res)
     end
 end
 
@@ -968,7 +972,21 @@ if plot_trials == 1
 
     if plotsave == 1
         fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'trials_overlaid']);
-        savefig(ovfig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
+        % savefig(ovfig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact') %commented out: PNGs for now, one per panel
+        %one PNG per panel (= condition): show only panel k, save its layout (not the slider), then back to panel 1
+        ptags = condis; %file name tag of each panel
+        pans = findobj(ovfig,'Tag','condpanel');
+        for k = 1:numel(ptags)
+            set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
+            pk = findobj(pans,'flat','UserData',k);
+            tlk = findobj(pk,'Type','tiledlayout');
+            if isempty(tlk)
+                tlk = pk; %no layout (just a note): the panel itself
+            end
+            exportgraphics(tlk,[save_directory '\Figures_StochRes\' animal '\' fname '-' ptags{k} '.png'],'Resolution',png_res)
+        end
+        set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
+        set(findobj(ovfig,'Style','slider'),'Value',1);
     end
 end
 
@@ -1167,7 +1185,18 @@ if plot_psd == 1
 
     if plotsave == 1
         fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'psd_tot']);
-        savefig(psdfig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
+        % savefig(psdfig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact') %commented out: PNGs for now, one per panel
+        %one PNG per panel (= pair, then all conditions): show only panel k, save its layout (not the slider), then back to panel 1
+        ptags = [strrep(pairnames,' ','_') {'allconds'}]; %file name tag of each panel, e.g. L_8_vs_LW_8
+        pans = findobj(psdfig,'Tag','condpanel');
+        for k = 1:numel(ptags)
+            set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
+            pk = findobj(pans,'flat','UserData',k);
+            tlk = findobj(pk,'Type','tiledlayout');
+            exportgraphics(tlk,[save_directory '\Figures_StochRes\' animal '\' fname '-' ptags{k} '.png'],'Resolution',png_res)
+        end
+        set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
+        set(findobj(psdfig,'Style','slider'),'Value',1);
     end
 end
 
@@ -1332,7 +1361,8 @@ if do_align == 1 && plot_align == 1
 
     if plotsave == 1
         fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'align_lags']);
-        savefig(gcf,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
+        % savefig(gcf,[save_directory '\Figures_StochRes\' animal '\' fname],'compact') %commented out: PNGs for now
+        exportgraphics(gcf,[save_directory '\Figures_StochRes\' animal '\' fname '.png'],'Resolution',png_res)
     end
 
     %picture 2: the trials unaligned (top row) and aligned (bottom row), one column per condition, all in one figure
@@ -1397,7 +1427,8 @@ if do_align == 1 && plot_align == 1
     if plotsave == 1
         % fname = sprintf([animal '-' condis{con} '-' ProbeInfo.Areas{prb} '_Probe' '-' 'align_trials']); %commented out: one figure per condition before
         fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'align_trials']);
-        savefig(gcf,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
+        % savefig(gcf,[save_directory '\Figures_StochRes\' animal '\' fname],'compact') %commented out: PNGs for now
+        exportgraphics(gcf,[save_directory '\Figures_StochRes\' animal '\' fname '.png'],'Resolution',png_res)
     end
     clear sig sh
 end
@@ -1725,7 +1756,18 @@ if do_align == 1 && plot_corr == 1
 
             if plotsave == 1
                 fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' ftag]);
-                savefig(mapfig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
+                % savefig(mapfig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact') %commented out: PNGs for now, one per panel
+                %one PNG per panel (= pair): show only panel k, save its layout (not the slider), then back to panel 1
+                ptags = strrep(pairnames,' ','_'); %file name tag of each panel, e.g. L_8_vs_LW_8
+                pans = findobj(mapfig,'Tag','condpanel');
+                for k = 1:numel(ptags)
+                    set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
+                    pk = findobj(pans,'flat','UserData',k);
+                    tlk = findobj(pk,'Type','tiledlayout');
+                    exportgraphics(tlk,[save_directory '\Figures_StochRes\' animal '\' fname '-' ptags{k} '.png'],'Resolution',png_res)
+                end
+                set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
+                set(findobj(mapfig,'Style','slider'),'Value',1);
             end
         end
 
@@ -1771,7 +1813,8 @@ if do_align == 1 && plot_corr == 1
 
         if plotsave == 1
             fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'tc_trials']);
-            savefig(gcf,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
+            % savefig(gcf,[save_directory '\Figures_StochRes\' animal '\' fname],'compact') %commented out: PNGs for now
+            exportgraphics(gcf,[save_directory '\Figures_StochRes\' animal '\' fname '.png'],'Resolution',png_res)
         end
     end
 end
@@ -2279,7 +2322,18 @@ if do_S1 == 1 && plot_lfpcoh == 1
 
     if plotsave == 1
         fname = sprintf([animal '-' 'S1_vs_V1_timefreq_rmaps_S1probe']);
-        savefig(s1fig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
+        % savefig(s1fig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact') %commented out: PNGs for now, one per panel
+        %one PNG per panel (= group 2 condition): show only panel k, save its layout (not the slider), then back to panel 1
+        ptags = condis(s1cons); %file name tag of each panel
+        pans = findobj(s1fig,'Tag','condpanel');
+        for k = 1:numel(ptags)
+            set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
+            pk = findobj(pans,'flat','UserData',k);
+            tlk = findobj(pk,'Type','tiledlayout');
+            exportgraphics(tlk,[save_directory '\Figures_StochRes\' animal '\' fname '-' ptags{k} '.png'],'Resolution',png_res)
+        end
+        set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
+        set(findobj(s1fig,'Style','slider'),'Value',1);
     end
 end
 
