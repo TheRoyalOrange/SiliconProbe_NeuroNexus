@@ -19,8 +19,13 @@
 %        raises correlation a bit, even on noise)
 %     5) PSD and trial-to-trial correlation (as in NNx_LFPCorrelation_LvsLW.m) on the aligned trials:
 %        does one group have more consistent trials once onset jitter is taken out?
-%     6) spike-LFP phase locking (pairwise phase consistency, PPC) per frequency in V1, and V1 MUA vs S1
-%        (probe 2) LFP when you say S1 is usable (do_S1)
+%     6) S1 (probe 2) LFP spectra next to the V1 spike-rate spectra, when you say S1 is usable (do_S1):
+%        if the whisker input acts as SR "noise", V1 spiking should get more rhythmic in the bands where
+%        S1 gets more power, at the same times. For group 2 (e.g. LW), sliding-window spectra of V1 spike
+%        rhythmicity and of every S1 channel's power per trial; at each frequency the shapes of the two time
+%        courses are correlated over a sliding block, per trial, averaged, tested against trial shuffles
+%        with probe-wide cluster correction (S1-probe layout of time-frequency maps)
+%        (spike-LFP / LFP-LFP phase locking was tried and dropped, see commit 1747056)
 %   Sections are being built one at a time; the list above is the plan.
 %
 % Inputs:
@@ -33,7 +38,7 @@
 %     tr_keep (double, 1 x nTrials) - trial numbers (indices into dim 1)
 %     tr_remove (0/1, 1 x nTrials) - mask over tr_keep; only tr_keep(tr_remove == 0) are used
 %     tr_remove_conditional (table, optional) - Name / TrialIdx named trial sets (NNx_TrialRemove_Conditional.m)
-%   <lfp_dir>\<animal>\<animal>-<stim>-LFP.mat (do_lfpcoh = 1): stim_lfp_stimchunks (double, trials x
+%   <lfp_dir>\<animal>\<animal>-<stim>-LFP.mat (do_S1 = 1, S1 channels only): stim_lfp_stimchunks (double, trials x
 %     samples x channels) - peri-stimulus LFP, 1 kHz, uV, plus the same tr_keep / tr_remove
 %   <probeinfo_dir>\<animal>-ProbeInfo.mat, ProbeInfo fields:
 %     .Areas (cell of char, 1 x probes) - region per probe; region picks the probe
@@ -100,26 +105,30 @@
 %     with the other trials of its condition
 %   tc_grp, tc_grp_null (cell, 1 x versions) - (double, channels x groups) the same within each group
 %   tc_p (cell, 1 x versions) - (double, channels x 1) label-shuffle permutation p, group 2 vs group 1
-%   (do_lfpcoh = 1) lfp (cell, 1 x conditions) - (single, response trials x samples x V1 channels) uV,
-%     LFP in lfp_load_ms (1 kHz), same trials/order as the MUA, channels in chanlist order;
-%     t_lfp (double, 1 x samples) - ms of each sample
-%   lfp_s1 (cell, 1 x conditions) - (single, response trials x samples x S1 channels) uV (do_S1 = 1);
-%     chanlist_s1 (double, channels x 1) - kept S1 raw channel IDs; prb_s1 - S1 probe number
-%   ppc_f (double, freqs x 1) - Hz (= ppc_hz); refnames (cell) - 'own' (+ 's1avg', 's1ch' if do_S1 = 1)
-%   ppc, ppc_pre (cell, 1 x references){1 x conditions} - (double, freqs x V1 channels) spike-LFP pairwise
-%     phase consistency across trials (PPC1) of the raw spike counts in psd_ms / its pre-stim copy against
-%     the Morlet-wavelet LFP phase of the reference (own channel, S1 average, S1 channel)
-%   ppcphase (cell, 1 x references){1 x conditions} - (double, freqs x V1 channels) preferred phase, rad
-%   ppcg, ppcg_pre (cell, 1 x references){1 x groups} - (double, freqs x V1 channels) PPC, group's trials pooled
-%   ppc_nspk (cell, 1 x conditions) - (double, V1 channels x 1) spikes in psd_ms used for the PPC
-%   plv_s1avg, plv_s1ch (+ _pre) (cell, 1 x conditions) - (double, freqs x V1 channels) V1-S1 LFP phase
-%     locking value (|mean phase-difference vector| over samples and trials), do_S1 = 1
-%   s1_refch (double) - raw channel ID of the S1 reference channel
+%   (do_S1 = 1) lfp_s1 (cell, 1 x conditions) - (single, response trials x samples x S1 channels) uV, S1 LFP
+%     in lfp_load_ms (1 kHz), same trials/order as the MUA; t_lfp (double, 1 x samples) - ms of each sample
+%   chanlist_s1 (double, channels x 1) - kept S1 raw channel IDs; prb_s1 - S1 probe number
+%   s1_refch (double) - raw channel ID of the S1 reference channel (kept channel s1_ref_row of the peak
+%     s1_shank_label shank)
+%   (do_S1 = 1, time-frequency, group 2's response trials only)
+%   tf_t (double, 1 x windows) - ms, sliding-window centres used (tf_ms, trimmed to the loaded data);
+%     tf_f (double, freqs x 1) - Hz (psd_hz, steps of 1000/nfft of tf_win_ms)
+%   v1tr (double, freqs x windows x trials) - V1 spike rhythmicity per group 2 response trial: multitaper
+%     power of the raw counts per window / that window's random-firing level, responsive-channel mean, dB
+%   ntr2 (double) - group 2 response trials used
+%   r_shape_ch (double, freqs x windows x S1 channels) - shape match: per trial, r over time (a shape_block_ms
+%     block of windows centred on each window) between V1 rhythmicity and that S1 channel's power at each
+%     frequency, Fisher-z averaged over group 2's trials (NaN where the block runs off either end). Plotted
+%   shape_zpix, shape_ppix (double, freqs x windows x S1 channels) - each pixel's z and two-sided p against
+%     n_shuf trial shuffles (V1 of one trial paired with another trial's S1)
+%   shape_sig (logical, freqs x windows x S1 channels) - pixels in clusters (|z| past shuf_p, positive and
+%     negative apart) whose summed |z| beats shape_clustthr = the (1 - clust_p) percentile of the biggest
+%     chance cluster per shuffle over all S1 channels
 %   run_notes (string) - things worth knowing, for the report
 %
 % Dependencies: NNx_BaseAnalysis*.m (spiking + LFP files, ProbeInfo); NNx_TrialRemove_Conditional(_callable).m
 %   (tr_remove mask format, optional conditional sets); uipickfiles.m; Signal Processing Toolbox (pmtm,
-%   butter, filtfilt, hilbert, xcorr); Statistics Toolbox (corr)
+%   xcorr); Statistics Toolbox (corr, prctile); MATLAB R2022a+ (clim, tiledlayout 'tight', boxchart)
 %
 
 %% Setup: Specify Animal, Conditions, and Analysis Info
@@ -198,24 +207,31 @@ woody_iter = 3; %rounds of re-aligning to the leave-one-out mean (Woody's method
 %(strongest trial = highest response score, first responsive trial = first response trial, see above)
 n_perm = 1000; %label shuffles for the group 1 vs group 2 trial-to-trial correlation test
 
-%%%Spike-LFP details%%%
-%check phase locking of the MUA to the LFP?
-do_lfpcoh = 1;
-    % 0 = no
-    % 1 = yes, V1 MUA to V1 LFP from a neighbouring channel (not the same one, spikes leak into its LFP)
-%also look at S1 (probe 2)? only turn on for animals where probe 2 was really in S1
+%%%S1 details%%%
+%(spike-LFP / LFP-LFP phase locking was dropped, the code is in commit 1747056)
+% do_lfpcoh = 1; %commented out with the phase locking, the S1 comparison only needs do_S1
+% ppc_hz = 2:2:80; ppc_cycles = [3 5]; ent_nbins = 18; %commented out: phase-locking settings
+%compare S1 (probe 2) LFP spectra with the V1 spike-rate spectra? only turn on for animals where probe 2 was really in S1
 do_S1 = 1;
     % 0 = no
-    % 1 = yes, V1 MUA to S1 LFP, and V1-S1 LFP coherence
+    % 1 = yes
 s1_region = "S1"; %ProbeInfo.Areas name of the S1 probe
-lfp_load_ms = [-5000 5000]; %ms, LFP stretch the phase is worked out on (filters need ~1 s to settle before the measuring windows, psd_ms and its pre-stim copy)
-ppc_hz = 2:2:80; %Hz, centre frequencies for the phase locking
-%ppc_bw = 0.25; %commented out: band-pass + Hilbert not used, the phase comes from Morlet wavelets
-ppc_cycles = [3 5]; %wavelet cycles at the lowest and highest ppc_hz (log-spaced in between, like the TF code)
-%which S1 channel for the single-channel S1 comparison? kept channel number s1_ref_row of the S1 shank with the highest
-%score for this shank label (ProbeInfo.ShankLabels, the name you gave it when labelling)
+lfp_load_ms = [-5000 5000]; %ms, S1 LFP stretch kept (has to hold the sliding windows and the baseline windows)
+%which S1 channel for the single-channel S1 comparison (next to the S1 average)? kept channel number s1_ref_row of
+%the S1 shank with the highest score for this shank label (ProbeInfo.ShankLabels, the name you gave it when labelling)
 s1_shank_label = "Whisker";
-s1_ref_row = 2; %which KEPT channel on that shank, counted from the top (2 = second kept channel; removed channels skipped)
+s1_ref_row = 3; %which KEPT channel on that shank, counted from the top (2 = second kept channel; removed channels skipped)
+% s1_ms = [150 2000]; %commented out: fixed S1 window replaced by the sliding-window (time-frequency) comparison
+%sliding-window time-frequency comparison of V1 spike rhythmicity and S1 power (group 2 only, e.g. LW)
+tf_win_ms = 500; %ms, sliding window length (500 -> ~2 Hz frequency steps)
+tf_step_ms = 50; %ms, step between windows
+tf_ms = [-1000 3000]; %ms, first and last window centre (trimmed to what the loaded MUA / LFP can hold)
+tf_nw = 2; %multitaper time-halfbandwidth for the sliding windows (~ +/- tf_nw/window length = +/- 4 Hz for 500 ms)
+% tf_base_ms = [-2500 -250]; %commented out: no S1 baseline needed, the shape correlation ignores offsets
+shape_block_ms = 1000; %ms of window centres per shape correlation (V1 vs S1 time course at each frequency, per trial, sliding)
+n_shuf = 200; %trial shuffles for the shape-map null (V1 of one trial paired with S1 of another; 200 ~ 3-6 min for ~64 S1 channels)
+shuf_p = 0.05; %pixel threshold (two-sided) for building clusters
+clust_p = 0.05; %cluster threshold: beat the (1 - clust_p) percentile of the biggest chance cluster
 
 %%%Plotting details%%%
 %stacked + overlaid single trials?
@@ -230,7 +246,7 @@ plot_psd = 1;
 plot_align = 1;
 %trial-to-trial correlation maps?
 plot_corr = 1;
-%spike-LFP phase locking?
+%S1 LFP spectra vs V1 spike-rate spectra? (do_S1 = 1)
 plot_lfpcoh = 1;
 %save the figures?
 plotsave = 0;
@@ -1804,46 +1820,56 @@ end
 
 
 
-%Now beginning the spike-LFP section
+%Now beginning the S1 section
+%(the spike-LFP and V1-S1 LFP phase locking that used to be here were dropped, see commit 1747056)
 
-%% Data Extraction: Load the LFP of the same recordings
+%% Data Extraction: Load the S1 LFP of the same recordings
 
 %the LFP files sit next to the spiking files (...\LFP\<animal>\<animal>-<stim>-LFP.mat), so no picking.
-%A long stretch (lfp_load_ms) is kept so the phase can be worked out with room for the filters to settle,
-%then the spikes are only compared to it inside psd_ms and its pre-stim copy. Same response trials, same
-%order as the MUA. V1 channels = the kept MUA channels; S1 channels too if do_S1 = 1
-if do_lfpcoh == 1
-    disp('LFP: Loading the LFP of the same recordings')
+%Only the S1 probe's kept channels are kept, same response trials in the same order as the MUA.
+%Also picks the single S1 channel: kept channel number s1_ref_row (from the top) of the S1 shank with the
+%highest s1_shank_label score
+if do_S1 == 1
+    disp('S1: Loading the S1 LFP of the same recordings')
     tic
 
-    if bin_ms ~= 1
-        error('The spike-LFP sections need bin_ms = 1 (one spike bin per LFP sample, 1 kHz)')
-    end
-    lfp_pre_ms = [-diff(psd_ms) 0]; %ms, the pre-stim measuring window
-    if psd_ms(1) - 1000 < lfp_load_ms(1) || psd_ms(2) + 1000 > lfp_load_ms(2) || lfp_pre_ms(1) - 1000 < lfp_load_ms(1)
-        error('The measuring windows (psd_ms and its pre-stim copy) need >= 1000 ms of LFP on each side. Widen lfp_load_ms')
-    end
+    % s1pre_ms = [-diff(psd_ms) 0]; %commented out: the S1 comparison is time-frequency now (sliding windows),
+    % s1pre_ms = [-diff(s1_ms) 0]; %its windows are checked against lfp_load_ms in that section
     lfpsamp = stim_onset_lfp + (lfp_load_ms(1):lfp_load_ms(2)-1); %LFP samples to keep (1 kHz)
     t_lfp = lfp_load_ms(1):lfp_load_ms(2)-1; %ms of each kept sample
 
-    %S1 probe channels (if asked)
-    chanlist_s1 = [];
-    prb_s1 = [];
-    if do_S1 == 1
-        prb_s1 = find(strcmp(string(ProbeInfo.Areas), s1_region));
-        if numel(prb_s1) ~= 1
-            error(['s1_region "' char(s1_region) '" does not pick exactly one probe in ProbeInfo.Areas'])
-        end
-        pmap_s1 = ProbeInfo.ProbeMaps{prb_s1}; % [rows x shanks] raw channel IDs
-        chremove_s1 = [];
-        if numel(ProbeInfo.Ch_Remove) >= prb_s1
-            chremove_s1 = ProbeInfo.Ch_Remove{prb_s1};
-        end
-        chanlist_s1 = setdiff(nonzeros(pmap_s1), chremove_s1(:)); %sorted column of kept S1 raw channel IDs
+    %S1 probe channels
+    prb_s1 = find(strcmp(string(ProbeInfo.Areas), s1_region));
+    if numel(prb_s1) ~= 1
+        error(['s1_region "' char(s1_region) '" does not pick exactly one probe in ProbeInfo.Areas'])
     end
+    pmap_s1 = ProbeInfo.ProbeMaps{prb_s1}; % [rows x shanks] raw channel IDs
+    chremove_s1 = [];
+    if numel(ProbeInfo.Ch_Remove) >= prb_s1
+        chremove_s1 = ProbeInfo.Ch_Remove{prb_s1};
+    end
+    chanlist_s1 = setdiff(nonzeros(pmap_s1), chremove_s1(:)); %sorted column of kept S1 raw channel IDs
 
-    lfp = cell(1,ncond); %{conditions} [response trials x samples x V1 channels] uV, single
-    lfp_s1 = cell(1,ncond); %{conditions} [response trials x samples x S1 channels] uV, single (do_S1 = 1)
+    %the single S1 channel: kept channel number s1_ref_row of the S1 shank with the highest s1_shank_label score
+    if isfield(ProbeInfo,'ShankLabels') == false || numel(ProbeInfo.ShankLabels) < prb_s1 || isstruct(ProbeInfo.ShankLabels{prb_s1}) == false ...
+            || isfield(ProbeInfo.ShankLabels{prb_s1}, char(s1_shank_label)) == false
+        haslabels = '';
+        if isfield(ProbeInfo,'ShankLabels') && numel(ProbeInfo.ShankLabels) >= prb_s1 && isstruct(ProbeInfo.ShankLabels{prb_s1})
+            haslabels = strjoin(fieldnames(ProbeInfo.ShankLabels{prb_s1}),', ');
+        end
+        error(['No ShankLabels.' char(s1_shank_label) ' on the S1 probe. Labels there: ' haslabels])
+    end
+    shscore = ProbeInfo.ShankLabels{prb_s1}.(char(s1_shank_label)); % [1 x shanks]
+    [~,pkshank] = max(shscore); %shank with the highest score
+    keptsh = pmap_s1(:, pkshank); %that shank, top to bottom
+    keptsh = keptsh(keptsh > 0 & ismember(keptsh, chanlist_s1)); %its kept channels only, still top to bottom
+    if numel(keptsh) < s1_ref_row
+        error(['S1 shank ' num2str(pkshank) ' has only ' num2str(numel(keptsh)) ' kept channels, s1_ref_row is ' num2str(s1_ref_row)])
+    end
+    s1_refch = keptsh(s1_ref_row); %raw channel ID
+    s1_refidx = find(chanlist_s1 == s1_refch); %its place in chanlist_s1
+
+    lfp_s1 = cell(1,ncond); %{conditions} [response trials x samples x S1 channels] uV, single
     for con = 1:ncond
         for file = 1:numel(condi_files{con})
             spkfile = condi_files{con}{file};
@@ -1852,7 +1878,7 @@ if do_lfpcoh == 1
                 error(['No LFP file for ' spkfile ': ' lfpfile])
             end
             [~,fname] = fileparts(lfpfile);
-            disp(['LFP: Loading ' condis{con} ', ' fname])
+            disp(['S1: Loading ' condis{con} ', ' fname])
 
             d = load(lfpfile,'stim_lfp_stimchunks','tr_keep','tr_remove'); %(not -v7.3, so the whole thing loads)
             sdat = matfile(spkfile);
@@ -1866,18 +1892,10 @@ if do_lfpcoh == 1
             end
 
             trs = trinfo{con}(trinfo{con}(:,1) == file, 2); %this file's good trials, same order as the MUA
-            lfp{con} = cat(1, lfp{con}, single(d.stim_lfp_stimchunks(trs, lfpsamp, chanlist)));
-            if do_S1 == 1
-                lfp_s1{con} = cat(1, lfp_s1{con}, single(d.stim_lfp_stimchunks(trs, lfpsamp, chanlist_s1)));
-            end
+            lfp_s1{con} = cat(1, lfp_s1{con}, single(d.stim_lfp_stimchunks(trs, lfpsamp, chanlist_s1)));
             clear d
         end
-
-        %keep the response trials (same ones as everything else)
-        lfp{con} = lfp{con}(resp{con},:,:);
-        if do_S1 == 1
-            lfp_s1{con} = lfp_s1{con}(resp{con},:,:);
-        end
+        lfp_s1{con} = lfp_s1{con}(resp{con},:,:); %keep the response trials (same ones as everything else)
     end
     clear sdat
     elapsed_time = toc;
@@ -1885,242 +1903,272 @@ if do_lfpcoh == 1
 end
 
 
-%% Data Analysis: Spike-LFP phase locking
+%% Data Analysis: V1 spike rhythmicity and S1 power over time (sliding windows, group 2)
 
-%Do the spikes come at the same LFP phase? For every frequency in ppc_hz, the LFP phase comes from a Morlet
-%wavelet run over the whole loaded LFP stretch (so the edges don't matter), then the phase at each spike
-%(raw counts, response trials) is collected inside psd_ms, and inside its pre-stim copy as the no-stim
-%reference. How consistent those phases are = PPC (pairwise phase consistency), counting only pairs of
-%spikes from DIFFERENT trials (Vinck 2012 "PPC1"), so bursts within one trial don't puff it up and the
-%number of spikes doesn't bias it. 0 = no locking. Preferred phase = the average phase (radians, 0 = LFP peak).
-%Three LFP references:
-%  own   - the V1 channel's own LFP (careful above ~40 Hz: a bit of each spike's waveform survives the
-%          300 Hz low-pass and can add fake locking on its own channel; below ~30 Hz it's negligible)
-%  s1avg - the S1 probe's average LFP (do_S1 = 1)
-%  s1ch  - one S1 channel: kept channel number s1_ref_row (from the top) of the S1 shank with the highest s1_shank_label score (do_S1 = 1)
-%Plus V1-S1 LFP phase locking (PLV): how constant the phase difference between each V1 channel's LFP and
-%the S1 LFP stays, over time and trials (0 = no fixed relation, 1 = perfectly fixed)
-if do_lfpcoh == 1
-    disp('LFP: Spike-LFP phase locking (wavelets, this takes a minute)')
+%The SR idea: if the added input (group 2, e.g. LW) works as "noise" in some band, V1 spiking should get
+%more rhythmic in the bands where S1 has extra power, and at the same times. So, for group 2's response
+%trials only, in sliding windows (tf_win_ms long, every tf_step_ms, centres tf_ms), per trial:
+%  V1: multitaper spectrum of the raw 1 ms spike counts per window, divided by that window's random
+%      (Poisson) firing level -> 1 = no rhythm, > 1 = rhythm, averaged over the responsive channels (dB)
+%  S1: multitaper LFP power per window for every S1 channel (dB)
+%then the shape match of the two time courses at each frequency (below), with a trial-shuffle null
+%(trial-averaged maps, r(t) across frequencies and the across-trial r per pixel were tried and dropped)
+if do_S1 == 1
+    disp(['S1: Sliding-window spectra of V1 spiking and S1 LFP, ' grpnames{2} ' (this takes a minute)'])
     tic
 
-    fs_lfp = 1000; %Hz
-    ppc_f = ppc_hz(:); % [freqs x 1] Hz
-    nfq = numel(ppc_f);
-    cycles = logspace(log10(ppc_cycles(1)), log10(ppc_cycles(2)), nfq); %wavelet cycles per frequency
-    wavtime = -2:1/fs_lfp:2; %s, wavelet time axis (long enough for the lowest frequency)
-    halfwave = (numel(wavtime)-1)/2;
-    nsamp = numel(t_lfp);
-    nConv = numel(wavtime) + nsamp - 1;
+    if bin_ms ~= 1
+        error('The V1-S1 time-frequency comparison needs bin_ms = 1 (spike bins = LFP samples, 1 kHz)')
+    end
+    fs1 = 1000; %Hz, the counts and the LFP
+    halfw = tf_win_ms/2; %ms
 
-    %the measuring windows: LFP samples and MUA bins at the same ms
-    wins_ms = {psd_ms, [-diff(psd_ms) 0]}; %{post, pre}
-    lfpwin = cell(1,2);
-    spkwin = cell(1,2);
-    for w = 1:2
-        lfpwin{w} = find(t_lfp >= wins_ms{w}(1) & t_lfp < wins_ms{w}(2));
-        spkwin{w} = find(t_bin >= wins_ms{w}(1) & t_bin < wins_ms{w}(2));
-        if numel(lfpwin{w}) ~= numel(spkwin{w})
-            error('The LFP and the MUA bins do not cover the measuring window the same way (is bin_ms 1, and is the window inside load_ms?)')
+    %window centres: keep the ones whose windows fit in the loaded MUA (load_ms) and LFP (lfp_load_ms)
+    cent = tf_ms(1):tf_step_ms:tf_ms(2);
+    fits = cent - halfw >= max(load_ms(1), lfp_load_ms(1)) & cent + halfw <= min(load_ms(2), lfp_load_ms(2));
+    if any(fits) == false
+        error('No sliding window fits in the loaded data. Change tf_ms / tf_win_ms')
+    end
+    if all(fits) == false
+        run_notes(end+1) = "Time-frequency window centres trimmed to " + min(cent(fits)) + " to " + max(cent(fits)) + " ms (the loaded data end there)";
+    end
+    tf_t = cent(fits); % [1 x windows] ms, window centres used
+    nt = numel(tf_t);
+
+    %multitaper tapers, made once (Slepian sequences, unit energy), and the frequencies kept
+    ntap = 2*tf_nw - 1;
+    tapers = dpss(tf_win_ms, tf_nw, ntap); % [window samples x tapers]
+    nfft_tf = 2^nextpow2(tf_win_ms);
+    f_tf_all = (0:nfft_tf/2)' * fs1/nfft_tf; %Hz
+    fk_tf = f_tf_all >= psd_hz(1) & f_tf_all <= psd_hz(2);
+    tf_f = f_tf_all(fk_tf); % [freqs x 1] Hz
+    nftf = numel(tf_f);
+    linemask_tf = false(nftf,1);
+    if line_out == 1
+        for b = 1:size(line_hz,1)
+            linemask_tf(tf_f >= line_hz(b,1) & tf_f <= line_hz(b,2)) = true;
         end
     end
-    nwin = numel(lfpwin{1});
+    %(one-sided power spectral density of a windowed stretch, averaged over the tapers: same scaling as
+    %pmtm, so random firing at mean count m per ms sits at 2*m/fs)
 
-    %wavelets in the frequency domain, one per frequency
-    wX = zeros(nConv,nfq);
-    for fi = 1:nfq
-        wwidth = cycles(fi)/(2*pi*ppc_f(fi)); %s, Gaussian width for this many cycles
-        wav = exp(2*1i*pi*ppc_f(fi).*wavtime) .* exp(-wavtime.^2./(2*wwidth^2));
-        wX(:,fi) = fft(wav, nConv).';
-        wX(:,fi) = wX(:,fi) ./ max(abs(wX(:,fi))); %scale (phase is all we use)
+    g2cons = find(condgrp == 2); %group 2's conditions
+    rch = find(respchans); %responsive V1 channels
+    nrch = numel(rch);
+    nch_s1 = numel(chanlist_s1);
+
+    ntr2 = 0; %group 2 response trials
+
+    %per-trial values
+    ntr2tot = 0;
+    for con = g2cons
+        ntr2tot = ntr2tot + size(lfp_s1{con},1);
     end
+    v1trsum = zeros(nftf,nt,ntr2tot); % [freqs x windows x trials] V1 rhythmicity summed over the responsive channels
+    v1trn = zeros(nftf,nt,ntr2tot); %how many responsive channels went into each
+    s1tr = zeros(nftf,nt,ntr2tot,nch_s1,'single'); % [freqs x windows x trials x S1 channels] S1 power, single saves memory
+    off = 0; %trials of the earlier conditions
 
-    %which references
-    refnames = {'own'};
-    s1_refch = [];
-    if do_S1 == 1
-        refnames = {'own','s1avg','s1ch'};
-        %the S1 channel: kept channel number s1_ref_row (from the top) of the S1 shank with the highest s1_shank_label score
-        if isfield(ProbeInfo,'ShankLabels') == false || numel(ProbeInfo.ShankLabels) < prb_s1 || isstruct(ProbeInfo.ShankLabels{prb_s1}) == false ...
-                || isfield(ProbeInfo.ShankLabels{prb_s1}, char(s1_shank_label)) == false
-            haslabels = '';
-            if isfield(ProbeInfo,'ShankLabels') && numel(ProbeInfo.ShankLabels) >= prb_s1 && isstruct(ProbeInfo.ShankLabels{prb_s1})
-                haslabels = strjoin(fieldnames(ProbeInfo.ShankLabels{prb_s1}),', ');
-            end
-            error(['No ShankLabels.' char(s1_shank_label) ' on the S1 probe. Labels there: ' haslabels])
-        end
-        shscore = ProbeInfo.ShankLabels{prb_s1}.(char(s1_shank_label)); % [1 x shanks]
-        [~,pkshank] = max(shscore); %shank with the highest score
-        pmap_s1 = ProbeInfo.ProbeMaps{prb_s1};
-        % cand = pmap_s1(s1_ref_row:end, pkshank); %commented out: s1_ref_row now counts the KEPT channels of the shank, not ProbeMaps rows
-        % cand = cand(ismember(cand, chanlist_s1));
-        keptsh = pmap_s1(:, pkshank); %that shank, top to bottom
-        keptsh = keptsh(keptsh > 0 & ismember(keptsh, chanlist_s1)); %its kept channels only, still top to bottom
-        if numel(keptsh) < s1_ref_row
-            error(['S1 shank ' num2str(pkshank) ' has only ' num2str(numel(keptsh)) ' kept channels, s1_ref_row is ' num2str(s1_ref_row)])
-        end
-        s1_refch = keptsh(s1_ref_row); %raw channel ID: the s1_ref_row-th kept channel from the top
-        s1_refidx = find(chanlist_s1 == s1_refch); %its place in chanlist_s1
-    end
-    nref = numel(refnames);
-
-    %outputs: {references}{conditions} [freqs x V1 channels]
-    ppc = cell(1,nref); %PPC, post window
-    ppc_pre = cell(1,nref); %PPC, pre-stim window
-    ppcphase = cell(1,nref); %preferred phase (rad), post window
-    ppcg = cell(1,nref); %{references}{groups} [freqs x V1 channels] PPC with the group's conditions pooled, post
-    ppcg_pre = cell(1,nref);
-    plv_s1avg = cell(1,ncond); %{conditions} [freqs x V1 channels] V1-S1 average LFP phase locking, post
-    plv_s1avg_pre = cell(1,ncond);
-    plv_s1ch = cell(1,ncond); %{conditions} [freqs x V1 channels] V1-S1 channel LFP phase locking, post
-    plv_s1ch_pre = cell(1,ncond);
-    ppc_nspk = cell(1,ncond); %{conditions} [V1 channels x 1] spikes used (post window)
-    ngrp = numel(condis_grp);
-    %sums for pooling conditions into groups: {references}{groups}{windows} [freqs x channels]
-    gS = cell(1,nref); gS2 = cell(1,nref); gN = cell(1,nref); gn2 = cell(1,nref);
-    for r = 1:nref
-        ppc{r} = cell(1,ncond);
-        ppc_pre{r} = cell(1,ncond);
-        ppcphase{r} = cell(1,ncond);
-        ppcg{r} = cell(1,ngrp);
-        ppcg_pre{r} = cell(1,ngrp);
-        for g = 1:ngrp
-            for w = 1:2
-                gS{r}{g}{w} = zeros(nfq,nch);
-                gS2{r}{g}{w} = zeros(nfq,nch);
-                gN{r}{g}{w} = zeros(nfq,nch);
-                gn2{r}{g}{w} = zeros(nfq,nch);
-            end
-        end
-    end
-
-    for con = 1:ncond
-        rtrs = find(resp{con} == true); %response trials (lfp{con} only holds these, same order)
-        nresp = numel(rtrs);
-        g = condgrp(con);
-        for r = 1:nref
-            ppc{r}{con} = nan(nfq,nch);
-            ppc_pre{r}{con} = nan(nfq,nch);
-            ppcphase{r}{con} = nan(nfq,nch);
-        end
-        ppc_nspk{con} = zeros(nch,1);
-        if nresp < 2
-            run_notes(end+1) = string(condis{con}) + ": fewer than 2 response trials, no spike-LFP phase locking";
+    for con = g2cons
+        nresp = size(lfp_s1{con},1); %response trials (lfp_s1 only holds these)
+        if nresp < 1
             continue
         end
-        disp(['LFP: ' condis{con}])
+        rtrs = find(resp{con} == true); %their rows in spkcount
+        ntr2 = ntr2 + nresp;
+        disp(['S1: ' condis{con}])
 
-        %S1 phases first (the same for every V1 channel): {windows} [window samples x trials x freqs], unit vectors
-        if do_S1 == 1
-            s1sig = {double(mean(lfp_s1{con},3))', double(lfp_s1{con}(:,:,s1_refidx))'}; %{average, channel} [samples x trials]
-            s1ph = cell(1,2); %{average, channel}{windows}
-            for k = 1:2
-                dS = fft(s1sig{k}, nConv); %columns = trials
-                for w = 1:2
-                    s1ph{k}{w} = zeros(nwin,nresp,nfq,'single');
+        for ti = 1:nt
+            b0 = find(t_bin == tf_t(ti) - halfw); %first MUA bin of this window
+            l0 = find(t_lfp == tf_t(ti) - halfw); %first LFP sample of this window
+            bidx = b0 + (0:tf_win_ms-1);
+            lidx = l0 + (0:tf_win_ms-1);
+
+            %V1, responsive channels
+            for i = 1:nrch
+                X = double(reshape(spkcount{con}(rtrs,bidx,rch(i)), nresp, tf_win_ms))'; % [window samples x trials] spikes per ms
+                m = mean(X,1); % [1 x trials] mean count per ms in this window
+                P = zeros(nfft_tf/2+1, nresp);
+                for j = 1:ntap
+                    Y = fft((X - m) .* tapers(:,j), nfft_tf);
+                    P = P + abs(Y(1:nfft_tf/2+1,:)).^2;
                 end
-                for fi = 1:nfq
-                    as = ifft(wX(:,fi) .* dS);
-                    as = as(halfwave+1:end-halfwave,:); % [samples x trials]
-                    for w = 1:2
-                        z = as(lfpwin{w},:);
-                        s1ph{k}{w}(:,:,fi) = z ./ abs(z); %phase only
-                    end
-                end
+                P = P / ntap / fs1;
+                P(2:end-1,:) = 2*P(2:end-1,:); %one-sided
+                lvl = 2*m/fs1; %random-firing level of each trial in this window
+                lvl(lvl == 0) = NaN; %no spikes, no rhythmicity
+                R = P(fk_tf,:) ./ lvl; % [freqs x trials] 1 = random firing
+                good = isnan(R) == false;
+                R(good == false) = 0;
+                v1trsum(:,ti,off+(1:nresp)) = v1trsum(:,ti,off+(1:nresp)) + reshape(R, nftf, 1, nresp); %per trial
+                v1trn(:,ti,off+(1:nresp)) = v1trn(:,ti,off+(1:nresp)) + reshape(good, nftf, 1, nresp);
             end
-            plv_s1avg{con} = nan(nfq,nch);
-            plv_s1avg_pre{con} = nan(nfq,nch);
-            plv_s1ch{con} = nan(nfq,nch);
-            plv_s1ch_pre{con} = nan(nfq,nch);
-        end
 
-        for ch = 1:nch
-            dX = fft(double(lfp{con}(:,:,ch))', nConv); % [nConv x trials] this V1 channel's LFP
-            for fi = 1:nfq
-                as = ifft(wX(:,fi) .* dX);
-                as = as(halfwave+1:end-halfwave,:); % [samples x trials]
-                for w = 1:2
-                    z = as(lfpwin{w},:);
-                    ownph = z ./ abs(z); % [window samples x trials] unit phase vectors, own channel
-                    K = double(reshape(spkcount{con}(rtrs,spkwin{w},ch), nresp, nwin))'; % [window samples x trials] spikes per ms
-                    nm = sum(K,1); % [1 x trials] spikes per trial
-                    N = sum(nm);
-                    if w == 1 && fi == 1
-                        ppc_nspk{con}(ch) = N;
-                    end
-
-                    for r = 1:nref
-                        if r == 1
-                            ph = ownph;
-                        else
-                            ph = double(s1ph{r-1}{w}(:,:,fi));
-                        end
-                        Sm = sum(ph .* K, 1, 'omitnan'); % [1 x trials] sum of spike phase vectors per trial
-                        sumS = sum(Sm);
-                        sumS2 = sum(abs(Sm).^2);
-                        sumn2 = sum(nm.^2);
-                        if N^2 - sumn2 > 0
-                            val = (abs(sumS)^2 - sumS2) / (N^2 - sumn2); %PPC across trials only
-                        else
-                            val = NaN; %spikes in fewer than 2 trials
-                        end
-                        if w == 1
-                            ppc{r}{con}(fi,ch) = val;
-                            ppcphase{r}{con}(fi,ch) = angle(sumS);
-                        else
-                            ppc_pre{r}{con}(fi,ch) = val;
-                        end
-                        %add to the group sums
-                        gS{r}{g}{w}(fi,ch) = gS{r}{g}{w}(fi,ch) + sumS;
-                        gS2{r}{g}{w}(fi,ch) = gS2{r}{g}{w}(fi,ch) + sumS2;
-                        gN{r}{g}{w}(fi,ch) = gN{r}{g}{w}(fi,ch) + N;
-                        gn2{r}{g}{w}(fi,ch) = gn2{r}{g}{w}(fi,ch) + sumn2;
-                    end
-
-                    %V1-S1 LFP phase locking: how constant the phase difference stays
-                    if do_S1 == 1
-                        pavg = abs(mean(ownph .* conj(double(s1ph{1}{w}(:,:,fi))), 'all', 'omitnan'));
-                        pch = abs(mean(ownph .* conj(double(s1ph{2}{w}(:,:,fi))), 'all', 'omitnan'));
-                        if w == 1
-                            plv_s1avg{con}(fi,ch) = pavg;
-                            plv_s1ch{con}(fi,ch) = pch;
-                        else
-                            plv_s1avg_pre{con}(fi,ch) = pavg;
-                            plv_s1ch_pre{con}(fi,ch) = pch;
-                        end
-                    end
+            %S1, every channel
+            for c1 = 1:nch_s1
+                X = double(lfp_s1{con}(:,lidx,c1))'; % [window samples x trials] uV
+                P = zeros(nfft_tf/2+1, nresp);
+                for j = 1:ntap
+                    Y = fft((X - mean(X,1)) .* tapers(:,j), nfft_tf);
+                    P = P + abs(Y(1:nfft_tf/2+1,:)).^2;
                 end
+                P = P / ntap / fs1;
+                P(2:end-1,:) = 2*P(2:end-1,:);
+                s1tr(:,ti,off+(1:nresp),c1) = single(reshape(P(fk_tf,:), nftf, 1, nresp)); %per trial
             end
         end
+        off = off + nresp;
+    end
+    if ntr2 == 0
+        error(['No ' grpnames{2} ' response trials, nothing to compare'])
     end
 
-    %PPC per group (its conditions' trials pooled)
-    for r = 1:nref
-        for g = 1:ngrp
-            den = gN{r}{g}{1}.^2 - gn2{r}{g}{1};
-            ppcg{r}{g} = (abs(gS{r}{g}{1}).^2 - gS2{r}{g}{1}) ./ den;
-            ppcg{r}{g}(den <= 0) = NaN;
-            den = gN{r}{g}{2}.^2 - gn2{r}{g}{2};
-            ppcg_pre{r}{g} = (abs(gS{r}{g}{2}).^2 - gS2{r}{g}{2}) ./ den;
-            ppcg_pre{r}{g}(den <= 0) = NaN;
-        end
+    %V1 rhythmicity per trial: responsive-channel mean, dB above random firing (NaN = no spikes)
+    v1tr = 10*log10(v1trsum ./ v1trn); % [freqs x windows x trials]
+    v1tr(isinf(v1tr)) = NaN;
+
+    %shape of the time courses: at each frequency, within each trial, correlate the V1 rhythmicity curve and
+    %the S1 power curve over a sliding block of windows (shape_block_ms of centres), then average the trials'
+    %r (Fisher z). Pearson ignores offset and scale, so a curve sitting below its pre-stim level (negative dB)
+    %still counts if it rises and falls with the other one. Neighbouring windows overlap a lot, so each block
+    %holds only a few independent points: r is noisy and large values happen by chance -> trial-shuffle null.
+    %
+    %Trial-shuffle null: V1 curves of each trial paired with ANOTHER trial's S1 curves (no trial keeps its own
+    %partner), whole map recomputed, n_shuf times. Whatever survives shuffling (the time course all trials
+    %share, the overlapping windows) is chance level. Each pixel gets a z against its shuffles; neighbouring
+    %pixels with |z| past the shuf_p threshold form clusters (positive and negative apart), cluster mass =
+    %sum of |z|; a real cluster counts when its mass beats the (1 - clust_p) percentile of the biggest chance
+    %cluster of each shuffle, over ALL S1 channels (so the whole probe is covered).
+    %Speed: each trial's block curves are centred and scaled once (for V1 and for S1), so a pairing is just
+    %a multiply and a sum. Windows where V1 had no spikes are left out of the V1 curve but not the S1 curve
+    %(slight approximation; rare once the responsive channels are averaged)
+    if exist('bwconncomp','file') == 0
+        error('The shape-map clusters need bwconncomp (Image Processing Toolbox)')
     end
-    clear s1ph s1sig dS dX as z ownph K ph gS gS2 gN gn2
+    hb = round(shape_block_ms/2/tf_step_ms); %windows either side of the block centre
+    L = 2*hb + 1; %windows per block
+    bc = 1+hb : nt-hb; %block centres (window index)
+    nbk = numel(bc);
+
+    %V1: each trial's block curve, centred and scaled to length 1 (once, the same for every S1 channel)
+    Vn = zeros(nftf,L,ntr2tot,nbk,'single'); % [freqs x block windows x trials x blocks]
+    Vok = false(nftf,1,ntr2tot,nbk); %trial usable in that block (>= 5 windows with spikes, not flat)
+    for k = 1:nbk
+        a = v1tr(:, bc(k)-hb : bc(k)+hb, :); % [freqs x block windows x trials]
+        okv = isnan(a) == false;
+        a(okv == false) = 0;
+        nv = sum(okv,2);
+        da = (a - sum(a,2)./nv) .* okv; %deviations from the trial's block mean (0 where no spikes)
+        den = sqrt(sum(da.^2,2));
+        Vok(:,:,:,k) = nv >= 5 & den > 0;
+        da = da ./ den;
+        da(isnan(da)) = 0;
+        Vn(:,:,:,k) = single(da);
+    end
+
+    %the shuffles: the same pairings for every S1 channel (needed for the max over channels)
+    rng('default') %same shuffles every run
+    permset = zeros(n_shuf, ntr2tot);
+    for s = 1:n_shuf
+        pm = randperm(ntr2tot);
+        while any(pm == 1:ntr2tot) %no trial paired with itself
+            pm = randperm(ntr2tot);
+        end
+        permset(s,:) = pm;
+    end
+    zthr = norminv(1 - shuf_p/2); %pixel |z| threshold for the clusters
+
+    r_shape_ch = nan(nftf,nt,nch_s1); % [freqs x windows (block centres) x S1 channels], NaN at the edges
+    shape_zpix = nan(nftf,nt,nch_s1); % [freqs x windows x S1 channels] pixel z vs the shuffles
+    shape_ppix = nan(nftf,nt,nch_s1); % [freqs x windows x S1 channels] pixel p (two-sided, from the shuffles)
+    nullmax = zeros(n_shuf, nch_s1); %biggest chance cluster mass per shuffle and channel
+    for c1 = 1:nch_s1
+        s1l = 10*log10(double(s1tr(:,:,:,c1))); % [freqs x windows x trials] dB
+        s1l(isinf(s1l)) = NaN;
+
+        %S1: each trial's block curve, centred and scaled to length 1
+        Sn = zeros(nftf,L,ntr2tot,nbk,'single');
+        for k = 1:nbk
+            b = s1l(:, bc(k)-hb : bc(k)+hb, :);
+            b(isnan(b)) = 0;
+            db = b - mean(b,2);
+            db = db ./ sqrt(sum(db.^2,2));
+            db(isnan(db)) = 0;
+            Sn(:,:,:,k) = single(db);
+        end
+
+        %real map: each trial's V1 with its own S1, Fisher-z mean over trials
+        rt = double(sum(Vn .* Sn, 2)); % [freqs x 1 x trials x blocks] r per trial
+        rt(Vok == false) = NaN;
+        rt(rt > 0.9999) = 0.9999; %keep atanh finite (NaNs stay NaN)
+        rt(rt < -0.9999) = -0.9999;
+        zreal = reshape(mean(atanh(rt),3,'omitnan'), nftf, nbk); % [freqs x blocks]
+
+        %shuffled maps
+        zsh = zeros(nftf,nbk,n_shuf,'single');
+        for s = 1:n_shuf
+            rt = double(sum(Vn .* Sn(:,:,permset(s,:),:), 2)); %V1 of trial i with S1 of another trial
+            rt(Vok == false) = NaN;
+            rt(rt > 0.9999) = 0.9999;
+            rt(rt < -0.9999) = -0.9999;
+            zsh(:,:,s) = single(reshape(mean(atanh(rt),3,'omitnan'), nftf, nbk));
+        end
+        zsh(linemask_tf,:,:) = NaN;
+        zreal(linemask_tf,:) = NaN;
+
+        %pixel z and p against the shuffles
+        mu = mean(zsh,3,'omitnan');
+        sd = std(zsh,0,3,'omitnan');
+        zp = (zreal - mu) ./ sd; % [freqs x blocks]
+        pp = (sum(abs(zsh - mu) >= abs(zreal - mu), 3) + 1) / (n_shuf + 1);
+        r_shape_ch(:,bc,c1) = tanh(zreal);
+        shape_zpix(:,bc,c1) = zp;
+        shape_ppix(:,bc,c1) = pp;
+
+        %biggest chance cluster of each shuffle (its own map against the same shuffle mean / SD)
+        for s = 1:n_shuf
+            zs = (double(zsh(:,:,s)) - mu) ./ sd;
+            mx = 0;
+            for sgn = [1 -1] %positive and negative clusters apart
+                cc = bwconncomp(sgn*zs > zthr, 4);
+                for q = 1:cc.NumObjects
+                    mx = max(mx, sum(abs(zs(cc.PixelIdxList{q}))));
+                end
+            end
+            nullmax(s,c1) = mx;
+        end
+        disp(['S1: shape-map shuffles done for CH' num2str(chanlist_s1(c1)) ' (' num2str(c1) ' of ' num2str(nch_s1) ')'])
+    end
+
+    %cluster threshold: biggest chance cluster over all S1 channels, per shuffle
+    shape_clustthr = prctile(max(nullmax,[],2), 100*(1 - clust_p));
+    shape_sig = false(nftf,nt,nch_s1); %pixels in significant clusters
+    for c1 = 1:nch_s1
+        zp = shape_zpix(:,bc,c1);
+        sigm = false(nftf,nbk);
+        for sgn = [1 -1]
+            cc = bwconncomp(sgn*zp > zthr, 4);
+            for q = 1:cc.NumObjects
+                if sum(abs(zp(cc.PixelIdxList{q}))) > shape_clustthr
+                    sigm(cc.PixelIdxList{q}) = true;
+                end
+            end
+        end
+        shape_sig(:,bc,c1) = sigm;
+    end
+    clear X P Y R v1trsum v1trn s1tr s1l a b da db rt Vn Sn zsh okv
     elapsed_time = toc;
     fprintf('execution time: %.2f seconds\n', elapsed_time);
 end
 
 
-%% Data Visualization: Spike-LFP phase locking
+%% Data Visualization: V1 spike rhythmicity vs S1 power over time
 
-%picture 1: PPC vs frequency on every V1 channel (probe layout), one figure per LFP reference,
-%           conditions in group colours, solid = after the stimulus (psd_ms), dashed = before (no stim)
-%picture 2: the same averaged over the responsive channels (+/- SEM over channels), group 1 vs group 2
-%picture 3: V1-S1 LFP phase locking (PLV) on every V1 channel, vs the S1 average and vs the S1 channel
-%picture 4: preferred spike phase of each responsive channel at its peak-PPC frequency (polar plots,
-%           distance from the centre = how strong the locking is there)
-if do_lfpcoh == 1 && plot_lfpcoh == 1
-    disp('LFP: Making spike-LFP pictures')
+%the shape-match maps only: per S1 channel (S1 probe layout), a time-frequency map coloured by how alike the
+%shapes of the V1 rhythmicity and S1 power time courses are, with the trial-shuffle significance
+%(the V1 / S1 time-frequency maps and the r(t) pictures that were here were dropped as not useful)
+if do_S1 == 1 && plot_lfpcoh == 1
+    disp('S1: Making the shape-match maps')
 
     if plotsave == 1
         %create figure folder
@@ -2129,207 +2177,73 @@ if do_lfpcoh == 1 && plot_lfpcoh == 1
         end
     end
 
-    [nrow,nshank] = size(pmap);
-    nref = numel(refnames);
+    nc = 128; %blue - white - red colour map (0 = white)
+    divmap = [linspace(0,1,nc)' linspace(0.3,1,nc)' ones(nc,1); ones(nc,1) linspace(1,0.2,nc)' linspace(1,0.2,nc)'];
+    [nrow_s1,nshank_s1] = size(pmap_s1); %S1 probe layout
 
-    %colour of each condition: group 1 blues, group 2 reds, subgroups dark to light (as the spectrum pictures)
-    grpdark = [0 0.25 0.6; 0.6 0.1 0.1];
-    grplight = [0.45 0.7 1; 1 0.55 0.45];
-    condcol = zeros(ncond,3);
-    for g = 1:numel(condis_grp)
-        gcons = find(condgrp == g);
-        for i = 1:numel(gcons)
-            if numel(gcons) == 1
-                s = 0;
+    %per S1 channel (S1 probe layout), a time-frequency map where the colour = how alike the SHAPE
+    %of the V1 rhythmicity and S1 power time courses are at that frequency, around that time (per-trial r
+    %over a shape_block_ms block, Fisher-z averaged over group 2's trials)
+    rmap = r_shape_ch; %(an across-trial r per pixel was tried first and dropped: it compared values, not the shape over time)
+    rlim = max(abs(rmap(:)),[],'omitnan'); %one symmetric colour range for the whole probe
+    if isnan(rlim) || rlim == 0
+        rlim = 1;
+    end
+    figure()
+    set(gcf, 'Position', get(0, 'Screensize'));
+    tl = tiledlayout(nrow_s1,nshank_s1,'TileSpacing','none','Padding','tight');
+    for row = 1:nrow_s1
+        for shank = 1:nshank_s1
+            chid = pmap_s1(row,shank); %raw channel ID at this spot
+            ax = nexttile(tl,(row-1)*nshank_s1 + shank);
+            if chid == 0 %no site here
+                axis(ax,'off')
+                continue
+            end
+            c1 = find(chanlist_s1 == chid);
+            if isempty(c1) %removed channel
+                axis(ax,'off')
+                text(ax,0.5,0.5,['CH' num2str(chid) ' removed'],'Units','normalized','HorizontalAlignment','center','Color',[.5 .5 .5])
+                continue
+            end
+            h = imagesc(ax, tf_t, tf_f, rmap(:,:,c1));
+            % set(h,'AlphaData',isnan(rmap(:,:,c1)) == false) %commented out: now faded outside the significant clusters
+            set(h,'AlphaData',(isnan(rmap(:,:,c1)) == false) .* (0.35 + 0.65*shape_sig(:,:,c1))) %NaN = blank, not significant = faded
+            axis(ax,'xy')
+            colormap(ax,divmap)
+            clim(ax,[-rlim rlim])
+            hold(ax,'on')
+            xline(ax,0,'k')
+            if any(shape_sig(:,:,c1),'all')
+                contour(ax, tf_t, tf_f, double(shape_sig(:,:,c1)), [0.5 0.5], 'k', 'LineWidth',1) %outline the significant clusters
+            end
+            hold(ax,'off')
+            if chid == s1_refch %the single S1 channel
+                text(ax,0.02,0.9,['CH' num2str(chid)],'Units','normalized','Color','b','FontWeight','bold')
             else
-                s = (i-1)/(numel(gcons)-1);
+                text(ax,0.02,0.9,['CH' num2str(chid)],'Units','normalized','Color','k')
             end
-            condcol(gcons(i),:) = grpdark(g,:)*(1-s) + grplight(g,:)*s;
-        end
-    end
-
-    %what each reference is, for the titles
-    refdesc = cell(1,nref);
-    for r = 1:nref
-        if strcmp(refnames{r},'own')
-            refdesc{r} = 'each channel''s own LFP (careful above ~40 Hz: spike-waveform leak)';
-        elseif strcmp(refnames{r},'s1avg')
-            refdesc{r} = 'S1 probe-average LFP';
-        else
-            refdesc{r} = ['S1 channel CH' num2str(s1_refch) ' (kept channel ' num2str(s1_ref_row) ' of the peak ' char(s1_shank_label) ' shank)'];
-        end
-    end
-
-    %pictures 1 and 3: list of probe-layout figures (post data, pre data, title, file tag, line at 0 or not)
-    fpost = {};
-    fpre = {};
-    ftitle = {};
-    ftag = {};
-    fzero = [];
-    for r = 1:nref
-        fpost{end+1} = ppc{r};
-        fpre{end+1} = ppc_pre{r};
-        ftitle{end+1} = ['spike-LFP phase locking (PPC) vs ' refdesc{r}];
-        ftag{end+1} = ['ppc_' refnames{r}];
-        fzero(end+1) = 1;
-    end
-    if do_S1 == 1
-        fpost(end+1:end+2) = {plv_s1avg, plv_s1ch};
-        fpre(end+1:end+2) = {plv_s1avg_pre, plv_s1ch_pre};
-        ftitle(end+1:end+2) = {'V1-S1 LFP phase locking (PLV) vs the S1 probe-average LFP', ['V1-S1 LFP phase locking (PLV) vs S1 channel CH' num2str(s1_refch)]};
-        ftag(end+1:end+2) = {'plv_s1avg','plv_s1ch'};
-        fzero(end+1:end+2) = [0 0];
-    end
-
-    legnames = {};
-    for con = 1:ncond
-        legnames(end+1:end+2) = {[condis{con} ' after stim'], [condis{con} ' before stim']};
-    end
-
-    for k = 1:numel(fpost)
-        %one y range for the whole probe
-        ylo = 0;
-        yhi = 0;
-        for con = 1:ncond
-            ylo = min([ylo; fpost{k}{con}(:); fpre{k}{con}(:)],[],'omitnan');
-            yhi = max([yhi; fpost{k}{con}(:); fpre{k}{con}(:)],[],'omitnan');
-        end
-        if yhi <= ylo
-            yhi = ylo + 0.01;
-        end
-
-        figure()
-        set(gcf, 'Position', get(0, 'Screensize'));
-        tl = tiledlayout(nrow,nshank,'TileSpacing','none','Padding','tight');
-        for row = 1:nrow
-            for shank = 1:nshank
-                chid = pmap(row,shank); %raw channel ID at this spot
-                ax = nexttile(tl,(row-1)*nshank + shank);
-                if chid == 0 %no site here
-                    axis(ax,'off')
-                    continue
-                end
-                ch = find(chanlist == chid);
-                if isempty(ch) %removed channel
-                    axis(ax,'off')
-                    text(ax,0.5,0.5,['CH' num2str(chid) ' removed'],'Units','normalized','HorizontalAlignment','center','Color',[.5 .5 .5])
-                    continue
-                end
-                axlast = ax; %last panel with data, for the legend
-                hold(ax,'on')
-                for con = 1:ncond
-                    plot(ax, ppc_f, fpost{k}{con}(:,ch), '-', 'Color',condcol(con,:), 'LineWidth',1)
-                    plot(ax, ppc_f, fpre{k}{con}(:,ch), '--', 'Color',condcol(con,:), 'LineWidth',0.75)
-                end
-                if fzero(k) == 1
-                    yline(ax,0,'k:')
-                end
-                hold(ax,'off')
-                xlim(ax,[min(ppc_f) max(ppc_f)])
-                ylim(ax,[ylo yhi*1.05])
-                if respchans(ch) == true
-                    text(ax,0.98,0.9,['CH' num2str(chid)],'Units','normalized','HorizontalAlignment','right','Color','b','FontWeight','bold')
-                else
-                    text(ax,0.98,0.9,['CH' num2str(chid)],'Units','normalized','HorizontalAlignment','right','Color',[.5 .5 .5])
-                end
-                if row < nrow
-                    set(ax,'XTickLabel',[])
-                end
-                if shank > 1
-                    set(ax,'YTickLabel',[])
-                end
+            if row < nrow_s1
+                set(ax,'XTickLabel',[])
+            end
+            if shank > 1
+                set(ax,'YTickLabel',[])
             end
         end
-        lgd = legend(axlast, legnames, 'Orientation','horizontal', 'Interpreter','none');
-        lgd.Layout.Tile = 'south';
-        xlabel(tl,'Hz')
-        if fzero(k) == 1
-            ylabel(tl,'PPC (0 = no locking)')
-        else
-            ylabel(tl,'PLV (0 = no fixed phase relation, 1 = fixed)')
-        end
-        title(tl,{[animal ' ' ProbeInfo.Areas{prb} '-Probe ' ftitle{k}], ...
-            ['solid = after stim (' num2str(psd_ms(1)) '-' num2str(psd_ms(2)) ' ms), dashed = before stim (same length); blues = ' grpnames{1} ', reds = ' grpnames{2} '; bold blue CH = responsive']},'Interpreter','none')
-
-        if plotsave == 1
-            fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' ftag{k}]);
-            savefig(gcf,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
-        end
     end
-
-    %picture 2: PPC averaged over the responsive channels, group 1 vs group 2, per reference
-    nresch = sum(respchans);
-    figure()
-    set(gcf, 'Position', get(0, 'Screensize'));
-    tl = tiledlayout(1,nref,'TileSpacing','compact','Padding','compact');
-    for r = 1:nref
-        ax = nexttile(tl,r);
-        hold(ax,'on')
-        for g = 1:numel(condis_grp)
-            for w = 1:2
-                if w == 1
-                    vals = ppcg{r}{g}(:,respchans); % [freqs x responsive channels] after stim
-                    lst = '-';
-                else
-                    vals = ppcg_pre{r}{g}(:,respchans); %before stim
-                    lst = '--';
-                end
-                mu = mean(vals,2,'omitnan');
-                se = std(vals,0,2,'omitnan') ./ sqrt(sum(isnan(vals) == false,2));
-                fill(ax, [ppc_f; flipud(ppc_f)], [mu-se; flipud(mu+se)], grpdark(g,:), 'FaceAlpha',0.15, 'EdgeColor','none', 'HandleVisibility','off')
-                if w == 1
-                    plot(ax, ppc_f, mu, lst, 'Color',grpdark(g,:), 'LineWidth',1.5, 'DisplayName',[grpnames{g} ' after stim'])
-                else
-                    plot(ax, ppc_f, mu, lst, 'Color',grpdark(g,:), 'LineWidth',1, 'DisplayName',[grpnames{g} ' before stim'])
-                end
-            end
-        end
-        yline(ax,0,'k:','HandleVisibility','off')
-        hold(ax,'off')
-        xlim(ax,[min(ppc_f) max(ppc_f)])
-        xlabel(ax,'Hz')
-        if r == 1
-            ylabel(ax,'PPC, mean +/- SEM over responsive channels')
-        end
-        title(ax,refdesc{r},'Interpreter','none')
-        legend(ax,'Location','northeast','Interpreter','none')
-    end
-    title(tl,[animal ' ' ProbeInfo.Areas{prb} '-Probe: spike-LFP phase locking by group (' num2str(nresch) ' responsive channels, each group''s trials pooled)'],'Interpreter','none')
+    cb = colorbar(ax);
+    cb.Layout.Tile = 'east';
+    cb.Label.String = 'shape r (Fisher-z mean over trials)';
+    xlabel(tl,'ms from stim onset (window centre)')
+    ylabel(tl,'Hz')
+    % title(tl,{[animal ' S1 probe, ' grpnames{2} ' (' num2str(ntr2) ' response trials): r across trials between V1 spike rhythmicity (responsive-channel mean) and each S1 channel''s power, per frequency and time'], ...
+    %     ['red = trials with more S1 power there have more rhythmic V1 spiking there; ' num2str(tf_win_ms) ' ms windows; bold blue = CH' num2str(s1_refch)]},'Interpreter','none') %commented out with the across-trial map
+    title(tl,{[animal ' S1 probe, ' grpnames{2} ' (' num2str(ntr2) ' response trials): shape match between V1 spike rhythmicity (responsive-channel mean) and each S1 channel''s power over time, per frequency'], ...
+        ['r over a ' num2str(shape_block_ms) ' ms block of ' num2str(tf_win_ms) ' ms windows around each time, per trial, Fisher-z averaged; red = they rise and fall together; bold blue = CH' num2str(s1_refch)], ...
+        ['outlined / not faded = cluster beats ' num2str(n_shuf) ' trial shuffles (pixel p < ' num2str(shuf_p) ', cluster p < ' num2str(clust_p) ', corrected over the whole S1 probe)']},'Interpreter','none')
 
     if plotsave == 1
-        fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'ppc_groups']);
-        savefig(gcf,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
-    end
-
-    %picture 4: preferred spike phase of each responsive channel at its peak-PPC frequency
-    figure()
-    set(gcf, 'Position', get(0, 'Screensize'));
-    tl = tiledlayout(nref,ncond,'TileSpacing','compact','Padding','compact');
-    rchs = find(respchans); %responsive channels
-    for r = 1:nref
-        for con = 1:ncond
-            pax = polaraxes(tl);
-            pax.Layout.Tile = (r-1)*ncond + con;
-            pkf = nan(numel(rchs),1); %Hz, peak-PPC frequency of each responsive channel
-            th = nan(numel(rchs),1); %rad, preferred phase there
-            rho = nan(numel(rchs),1); %PPC there
-            for i = 1:numel(rchs)
-                [pk,ip] = max(ppc{r}{con}(:,rchs(i)));
-                if isnan(pk) == false
-                    pkf(i) = ppc_f(ip);
-                    th(i) = ppcphase{r}{con}(ip,rchs(i));
-                    rho(i) = max(pk,0); %negative PPC = no locking, drawn at the centre
-                end
-            end
-            polarscatter(pax, th, rho, 25, condcol(con,:), 'filled')
-            title(pax, {[refnames{r} ', ' condis{con}], ['median peak freq ' num2str(median(pkf,'omitnan'),'%.0f') ' Hz']},'Interpreter','none')
-        end
-    end
-    title(tl,{[animal ' ' ProbeInfo.Areas{prb} '-Probe: preferred spike phase of each responsive channel at its peak-PPC frequency (after stim)'], ...
-        'angle = LFP phase the spikes prefer (0 = LFP peak), distance from the centre = PPC there'},'Interpreter','none')
-
-    if plotsave == 1
-        fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'ppc_phase']);
+        fname = sprintf([animal '-' 'S1_vs_V1_timefreq_rmaps_S1probe']);
         savefig(gcf,[save_directory '\Figures_StochRes\' animal '\' fname],'compact')
     end
 end
