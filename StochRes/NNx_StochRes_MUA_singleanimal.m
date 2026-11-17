@@ -964,6 +964,7 @@ if plot_trials == 1
             'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
             num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
     end
+    drawnow %show it now; the script doesn't wait, it carries on
 
     if plotsave == 1
         fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'trials_overlaid']);
@@ -1162,6 +1163,7 @@ if plot_psd == 1
         'Min',1, 'Max',npanel, 'Value',1, 'SliderStep',[1 1]/(npanel-1), ...
         'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
         num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
+    drawnow %show it now; the script doesn't wait, it carries on
 
     if plotsave == 1
         fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'psd_tot']);
@@ -1719,6 +1721,7 @@ if do_align == 1 && plot_corr == 1
                     'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
                     num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
             end
+            drawnow %show it now; the script doesn't wait, it carries on
 
             if plotsave == 1
                 fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' ftag]);
@@ -2272,6 +2275,7 @@ if do_S1 == 1 && plot_lfpcoh == 1
             'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
             num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
     end
+    drawnow %show it now; the script doesn't wait, it carries on
 
     if plotsave == 1
         fname = sprintf([animal '-' 'S1_vs_V1_timefreq_rmaps_S1probe']);
