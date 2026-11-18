@@ -74,6 +74,12 @@
 %   filesused (string, files x 4) - condition, file name, good trials, trials left out by tr_conditional_use
 %   (Quality Control: chan_medz_cond, respchans_cond, chan_medz, respscore, respnull, respthr, resp_tmpl and
 %   tmpl_rounds are always made, but only saved with keep_qc = 1; resp, respchans, respfrac are always saved)
+%   (resp_method = 2, the default: chan_medz_cond = each channel's condition-mean trace peak in resp_ms, robust z
+%   vs its own base_use_ms baseline; respscore = per trial, the best shank's LOWEST peak robust z over its
+%   channels 1..resp_shank_nch (each channel vs the all-trial base_use_ms median / 1.4826 x MAD); resp =
+%   respscore >= resp_z; respthr = resp_z; respnull = the same score in the baseline stretch (QC only);
+%   chpeakz {con} (trials x channels) each channel's peak robust z, resp_shankch (shanks x resp_shank_nch)
+%   raw IDs used, NaN = shank skipped; tmpl_rounds = 0. The descriptions below are for resp_method = 1)
 %   chan_medz_cond (single, channels x conditions) - each channel's median trial z: template-match score
 %     (sum(trial .* template)/sum(template.^2) in resp_ms, trial minus its pre-stim median, template = trimmed
 %     leave-one-out mean of the condition's other (response) trials) vs that score at the fake no-stim times
@@ -133,6 +139,11 @@
 %   shape_sig {con} (logical, freqs x windows x S1 channels) - pixels in clusters (|z| past shuf_p, positive and
 %     negative apart) whose summed |z| beats shape_clustthr(con) = the (1 - clust_p) percentile of the biggest
 %     chance cluster per shuffle over all S1 channels (per condition)
+%   s1_shankch (double, up to s1_shank_nch x 1) - raw IDs of the main S1 shank's first kept channels (from the top)
+%   r_shape_v1, shape_zpix_v1, shape_ppix_v1, shape_sig_v1 {con} (freqs x windows x V1 channels) and
+%     shape_clustthr_v1 (1 x conditions) - the same shape match on the V1 probe: each RESPONSIVE V1 channel's spike
+%     rhythmicity vs the main S1 shank curve (mean dB power of s1_shankch), shuffles and clusters over the
+%     responsive channels; NaN / false for the non-responsive channels (rows still line up with chanlist)
 %   run_notes (string) - things worth knowing, for the report
 %
 % Dependencies: NNx_BaseAnalysis*.m (spiking + LFP files, ProbeInfo); NNx_TrialRemove_Conditional(_callable).m
@@ -147,7 +158,7 @@
 %THERE ARE VARIABLES IN THIS SECTION THAT YOU MUST MODIFY
 
 %Who is the data? (exactly how the file names start: <animal>-<stim>-spiking_results.mat)
-animal = '20260423-p12';
+animal = '20260411-p9';
 
 %which probe has the MUA you want? (an entry of ProbeInfo.Areas, or a probe number like "1")
 region = "V1";
@@ -205,6 +216,20 @@ tmpl_trim = 20; %percent of trials left out (half each end) at every time point 
 tmpl_iter = 2; %rounds of rebuilding the template from the trials that passed (stops earlier if the calls stop changing)
 chan_z_min = 1; %a channel counts as responsive (in a condition) when its typical (median) trial z is at least this
 resp_null_prct = 99; %a trial is a response trial when its score beats this percentile of its condition's fake scores
+%(the settings above are for resp_method = 1)
+
+%which way to find the response trials?
+resp_method = 2;
+    % 1 = template matching against fake no-stim windows (above; struggled with variable responses)
+    % 2 = per channel: does the rate peak anywhere in resp_ms rise far above the pre-stim baseline of ALL
+    %     trials (robust: median / MAD)? Response = channels 1..resp_shank_nch of one shank all do
+base_use_ms = [-2000 0]; %ms, pre-stim stretch of every trial the baseline comes from (method 2)
+peak_win_ms = 100; %ms, the rate is averaged over this sliding window before looking for the peak (method 2)
+resp_z = 3; %a channel responds in a trial when its peak is at least this many robust SDs (1.4826 x MAD) above the baseline median (method 2; also picks the responsive channels)
+resp_shank_nch = 3; %response = the first this many KEPT channels (from the top) of any one shank all respond (method 2)
+resp_min_ms = 150; %ms, each of those channels has to STAY >= resp_z for at least this long (no single blips) (method 2).
+%(keep it LONGER than peak_win_ms: the averaging window already stretches a brief blip to ~peak_win_ms; 50 ms let blips through in a test)
+resp_together_ms = 150; %ms, and they all have to do it within this stretch of each other (method 2)
 
 %%%Spectrum details%%%
 %psd_seg_ms = 1000; %commented out: Welch dropped, only ~4 segments per trial in psd_ms. Multitaper instead
@@ -241,6 +266,7 @@ lfp_load_ms = [-5000 5000]; %ms, S1 LFP stretch kept (has to hold the sliding wi
 %the S1 shank with the highest score for this shank label (ProbeInfo.ShankLabels, the name you gave it when labelling)
 s1_shank_label = "Whisker";
 s1_ref_row = 3; %which KEPT channel on that shank, counted from the top (2 = second kept channel; removed channels skipped)
+s1_shank_nch = 3; %for the V1-probe maps: the first this many KEPT channels (from the top) of that shank, their powers (dB) averaged
 % s1_ms = [150 2000]; %commented out: fixed S1 window replaced by the sliding-window (time-frequency) comparison
 %sliding-window time-frequency comparison of V1 spike rhythmicity and S1 power (group 2 only, e.g. LW)
 tf_win_ms = 500; %ms, sliding window length (500 -> ~2 Hz frequency steps)
@@ -257,14 +283,15 @@ clust_p = 0.05; %cluster threshold: beat the (1 - clust_p) percentile of the big
 %want to dig into how the early steps handled the data (which trials were kept, which channels respond, what
 %the response detection compared against)? Everything for that is switched on/off here
 %responsive channels on the probe? (each channel's best typical z over the conditions, responsive ones circled)
-plot_respchans = 0;
+plot_respchans = 1;
     % 0 = no
     % 1 = yes (one probe-map figure, end of the Response trials section)
 %every trial of each condition as a heatmap, with which got called a response + mean response vs no-response traces,
 %plus each condition's response template?
-plot_respcheck = 0;
+plot_respcheck = 1;
     % 0 = no
     % 1 = yes (one figure per condition + one template figure)
+%(those heatmaps always show channel 2 of the peak Light shank; fixed, not a setting)
 %save the Quality Control figures? (own subfolder: <save_directory>\Figures_StochRes\<animal>\QC, apart from the
 %results figures; separate from plotsave)
 qc_plotsave = 0;
@@ -293,6 +320,11 @@ plot_align = 1;
 plot_corr = 1;
 %S1 LFP spectra vs V1 spike-rate spectra? (do_S1 = 1)
 plot_lfpcoh = 1;
+%how see-through are the NOT significant pixels of the S1 / V1 shape-match maps? (significant clusters: solid, outlined)
+map_alpha = 2;
+    % 1 = fixed: map_alpha_ns below
+    % 2 = by the pixel's shuffle p: alpha = 1 - p (low p = solid, p near 1 = nearly invisible)
+map_alpha_ns = 0.85; %alpha of the not-significant pixels for map_alpha = 1 (was 0.35, hid the patterns)
 %save the figures? (as PNGs; a figure with a slider gets one PNG per panel, e.g. ...-psd_tot-L_8_vs_LW_8.png)
 plotsave = 1;
 png_res = 150; %dpi of the saved PNGs (a full-screen figure -> ~2900 x 1600 px)
@@ -531,15 +563,37 @@ end
 %Only the shape decides: a faint template (few responders) shrinks the real and the fake scores alike.
 %Uses the smoothed rate (template from 1 ms counts would be mostly noise); the 25 ms kernel leaks only a
 %few ms of response into the "before" stretch, and its median ignores that
-disp('MUA: Finding the trials with a response (template matching)')
+%
+%resp_method = 2 (template matching above struggled with responses that vary a lot from trial to trial):
+%  1) each channel's smoothed rate, averaged over a sliding peak_win_ms window
+%  2) its baseline = the pre-stim stretch base_use_ms of ALL the condition's trials together: median, and
+%     spread = 1.4826 x MAD (robust, so bursts in the baseline don't inflate it; 1.4826 x MAD = SD for
+%     normal data). Robust z = (rate - median) / spread
+%  3) per trial and channel: the level it HOLDS for resp_min_ms, anywhere in resp_ms (any latency and any
+%     shape counts, but single blips don't)
+%  4) a trial is a response when channels 1..resp_shank_nch (kept, from the top) of ANY one shank all hold
+%     >= resp_z, within resp_together_ms of each other: per shank and time the lowest of their held levels
+%     (each taken as the best within resp_together_ms), its best time, per trial the best shank (respscore)
+%  (tried first: each channel's single highest peak anywhere in resp_ms, at unrelated times; too permissive)
+%  5) responsive channels (for the later sections): the condition's trial-mean trace peaks >= resp_z robust
+%     SDs above its own baseline
+%Each channel on its own (no pooling across channels: channels differ in latency and shape)
+disp(['MUA: Finding the trials with a response (method ' num2str(resp_method) ')'])
 tic
 
-%do the fake windows fit? (inside the loaded stretch, and ending before the real stimulus)
-if fake_ms(1) + pre_end_ms - pre_resp_ms < load_ms(1)
-    error(['The first fake window starts before the loaded data (' num2str(load_ms(1)) ' ms). Move fake_ms later or base_ms earlier'])
-end
-if fake_ms(end) + resp_ms(2) > 0
-    error('The last fake response window runs past the real stimulus. Move fake_ms earlier')
+if resp_method == 1
+    %do the fake windows fit? (inside the loaded stretch, and ending before the real stimulus)
+    if fake_ms(1) + pre_end_ms - pre_resp_ms < load_ms(1)
+        error(['The first fake window starts before the loaded data (' num2str(load_ms(1)) ' ms). Move fake_ms later or base_ms earlier'])
+    end
+    if fake_ms(end) + resp_ms(2) > 0
+        error('The last fake response window runs past the real stimulus. Move fake_ms earlier')
+    end
+else
+    %does the baseline stretch fit? (inside the loaded stretch, before the stimulus)
+    if base_use_ms(1) < load_ms(1) || base_use_ms(2) > 0
+        error(['base_use_ms has to lie between the start of the loaded data (' num2str(load_ms(1)) ' ms) and 0'])
+    end
 end
 
 respidx = find(t_bin >= resp_ms(1) & t_bin < resp_ms(2)); %bins the template covers
@@ -554,95 +608,193 @@ respthr = nan(1,ncond); %its resp_null_prct percentile, per condition
 chan_medz_cond = nan(nch,ncond); % [channels x conditions] each channel's median trial z
 respchans_cond = false(nch,ncond); % [channels x conditions] true = responsive in that condition
 resp_tmpl = cell(1,ncond); %{conditions} [template bins x channels] spikes/s above baseline, final template
-tmpl_rounds = zeros(1,ncond); %template rounds actually run per condition
-for con = 1:ncond
-    ntr = ntrials(con);
-    disp(['MUA: Template matching ' condis{con}])
+tmpl_rounds = zeros(1,ncond); %template rounds actually run per condition (0 = method 2, no template)
 
-    %real windows, each trial minus its own pre-stim median
-    X = rate{con}(:,respidx,:) - median(rate{con}(:,preidx,:),2); % [trials x template bins x channels] spikes/s
+if resp_method == 2
+    baseidx = find(t_bin >= base_use_ms(1) & t_bin < base_use_ms(2)); %bins of the baseline stretch
+    pkw = max(1, round(peak_win_ms/bin_ms)); %bins per peak window
 
-    %fake windows, the same way
-    Xf = zeros(ntr,nw,nch,nfake,'single'); % [trials x template bins x channels x fake windows]
-    for f = 1:nfake
-        fresp = find(t_bin >= fake_ms(f)+resp_ms(1) & t_bin < fake_ms(f)+resp_ms(2)); %fake response window
-        fpre = find(t_bin >= fake_ms(f)+pre_end_ms-pre_resp_ms & t_bin < fake_ms(f)+pre_end_ms); %and its "before" stretch
-        Xf(:,:,:,f) = rate{con}(:,fresp,:) - median(rate{con}(:,fpre,:),2);
-    end
-
-    use = true(ntr,1); %trials the templates are built from (round 1: all of them)
-    prevresp = []; %last round's calls
-    for rnd = 1:tmpl_iter+1
-        %each trial's template: trimmed mean of the other trials in use
-        T = zeros(ntr,nw,nch,'single'); % [trials x template bins x channels]
-        for tr = 1:ntr
-            others = use;
-            others(tr) = false;
-            T(tr,:,:) = trimmean(X(others,:,:), tmpl_trim, 1);
+    %each shank's first resp_shank_nch kept channels (from the top): a response needs all of them on one shank
+    nshk = size(pmap,2);
+    resp_shankch = nan(nshk, resp_shank_nch); % [shanks x channels] raw IDs (NaN row = shank not used)
+    shkidx = cell(1,nshk); %{shanks} their places in chanlist
+    for shank = 1:nshk
+        kept = pmap(:,shank); %top to bottom
+        kept = kept(kept > 0 & ismember(kept, chanlist)); %kept channels only
+        if numel(kept) < resp_shank_nch
+            run_notes(end+1) = "Shank " + shank + ": only " + numel(kept) + " kept channel(s), not used for the response calls (resp_shank_nch = " + resp_shank_nch + ")";
+            continue
         end
-        den = sum(T.^2,2); % [trials x 1 x channels] size of each template
-        den(den == 0) = NaN; %flat template (silent channel): no score
+        resp_shankch(shank,:) = kept(1:resp_shank_nch)';
+        [~,shkidx{shank}] = ismember(kept(1:resp_shank_nch), chanlist);
+    end
+    useshk = find(isnan(resp_shankch(:,1)) == false)'; %shanks used
+    if isempty(useshk)
+        error(['No shank has ' num2str(resp_shank_nch) ' kept channels, so no response can be called. Lower resp_shank_nch'])
+    end
+    shch = unique([shkidx{useshk}]); %the shanks' channels 1..resp_shank_nch (places in chanlist): the only ones the call needs
+    nmin = max(1, round(resp_min_ms/bin_ms)); %bins a channel has to stay up
+    ntog = max(1, round(resp_together_ms/bin_ms)); %bins the channels of a shank have to do it within
 
-        %scores, real and fake
-        sc_ch = reshape(sum(X.*T,2)./den, ntr, nch); % [trials x channels]
-        scf_ch = zeros(ntr,nfake,nch,'single');
+    chpeakz = cell(1,ncond); %{conditions} [trials x channels] each channel's peak robust z in resp_ms
+    for con = 1:ncond
+        ntr = ntrials(con);
+        disp(['MUA: Peaks above the all-trial baseline, ' condis{con}])
+
+        W = movmean(rate{con}, pkw, 2); % [trials x bins x channels] spikes/s, averaged over peak_win_ms
+
+        %each channel's robust baseline over ALL trials x ALL baseline bins
+        B = reshape(W(:,baseidx,:), ntr*numel(baseidx), nch); % [(trials*baseline bins) x channels]
+        bmed = median(B,1); % [1 x channels]
+        bsd = 1.4826 * mad(B,1,1); % [1 x channels] robust SD (median absolute deviation, scaled)
+        nomad = bsd == 0;
+        if any(nomad) %very sparse channel: MAD is 0, use the SD instead
+            bsd(nomad) = std(B(:,nomad),0,1);
+            run_notes(end+1) = string(condis{con}) + ": baseline MAD = 0 on CH" + strjoin(string(chanlist(nomad)'),", CH") + ", SD used instead";
+        end
+        bsd(bsd == 0) = NaN; %silent channel, drops out (and its shank can't pass)
+        % Z = (W - reshape(bmed,1,1,nch)) ./ reshape(bsd,1,1,nch); %commented out: only the shanks' channels 1..3 are needed now
+        Z = (W(:,:,shch) - reshape(bmed(shch),1,1,[])) ./ reshape(bsd(shch),1,1,[]); % [trials x bins x those channels] robust z, each vs ITS OWN baseline
+
+        %commented out: one peak anywhere in resp_ms per channel, at any time, was too permissive (single blips, and
+        %the three channels' peaks could fall at unrelated times)
+        % chpk = reshape(max(Z(:,respidx,:),[],2), ntr, nch);
+        % chpkn = reshape(max(Z(:,baseidx,:),[],2), ntr, nch);
+        % chpeakz{con} = chpk;
+        %tighter: each channel has to STAY up for resp_min_ms, and channels 1..3 of a shank have to do so TOGETHER
+        Zs = movmin(Z, nmin, 2); %the level each channel holds for a whole resp_min_ms stretch around each time
+        Zt = movmax(Zs, ntog, 2); %the best such level within resp_together_ms around each time
+        chpeakz{con} = nan(ntr,nch); %each channel's sustained peak in resp_ms (only the shanks' channels 1..3)
+        chpeakz{con}(:,shch) = reshape(max(Zs(:,respidx,:),[],2), ntr, numel(shch));
+
+        %trial call: per shank, at each time the level ALL its channels 1..resp_shank_nch hold (lowest of them; a
+        %silent channel = NaN = the shank can't pass), its best time in resp_ms; per trial the best shank
+        shk = nan(ntr,nshk); % [trials x shanks]
+        shkn = nan(ntr,nshk);
+        for shank = useshk
+            % shk(:,shank) = min(chpk(:,shkidx{shank}),[],2); %commented out with the per-channel peaks above
+            % shkn(:,shank) = min(chpkn(:,shkidx{shank}),[],2);
+            [~,loc] = ismember(shkidx{shank}, shch); %this shank's channels in Z
+            together = min(Zt(:,:,loc),[],3,'includenan'); % [trials x bins] level all of them hold, close together in time
+            shk(:,shank) = max(together(:,respidx),[],2);
+            shkn(:,shank) = max(together(:,baseidx),[],2);
+        end
+        respscore{con} = max(shk,[],2,'omitnan'); % [trials x 1] level the best shank's channels 1..3 all hold for resp_min_ms, together
+        respnull{con} = max(shkn,[],2,'omitnan'); % [trials x 1] the same score in the baseline stretch (QC only)
+        respthr(con) = resp_z;
+        resp{con} = respscore{con} >= resp_z;
+
+        %responsive channels (later sections): the trial-mean trace's peak in resp_ms vs its own baseline, robust z
+        M = reshape(mean(W,1), size(W,2), nch); % [bins x channels]
+        mmed = median(M(baseidx,:),1);
+        msd = 1.4826 * mad(M(baseidx,:),1,1);
+        msd(msd == 0) = NaN;
+        chan_medz_cond(:,con) = ((max(M(respidx,:),[],1) - mmed) ./ msd)';
+        respchans_cond(:,con) = chan_medz_cond(:,con) >= resp_z;
+
+        %the "template" for the QC picture: mean of the response trials above the baseline median
+        if sum(resp{con}) >= 1
+            resp_tmpl{con} = reshape(mean(rate{con}(resp{con},respidx,:),1), nw, nch) - bmed;
+        else
+            resp_tmpl{con} = nan(nw,nch,'single');
+        end
+    end
+    clear W B Z Zs Zt M together shk shkn
+
+else %resp_method == 1, template matching against fake windows
+    for con = 1:ncond
+        ntr = ntrials(con);
+        disp(['MUA: Template matching ' condis{con}])
+
+        %real windows, each trial minus its own pre-stim median
+        X = rate{con}(:,respidx,:) - median(rate{con}(:,preidx,:),2); % [trials x template bins x channels] spikes/s
+
+        %fake windows, the same way
+        Xf = zeros(ntr,nw,nch,nfake,'single'); % [trials x template bins x channels x fake windows]
         for f = 1:nfake
-            scf_ch(:,f,:) = sum(Xf(:,:,:,f).*T,2)./den; %each fake window against the same trial's template
-        end
-        scf_ch = reshape(scf_ch, ntr*nfake, nch); % [(trials*fake windows) x channels]
-
-        %each channel's scores in units of its no-stim spread
-        fakemu = mean(scf_ch,1,'omitnan'); % [1 x channels]
-        fakesd = std(scf_ch,0,1,'omitnan'); % [1 x channels]
-        fakesd(fakesd == 0) = NaN; %silent channel, drops out
-        zch = (sc_ch - fakemu) ./ fakesd; % [trials x channels]
-        zfake = (scf_ch - fakemu) ./ fakesd; % [(trials*fake windows) x channels]
-
-        %this condition's responsive channels
-        chan_medz_cond(:,con) = median(zch,1,'omitnan')';
-        respchans_cond(:,con) = chan_medz_cond(:,con) >= chan_z_min;
-        tmpl_rounds(con) = rnd;
-        if any(respchans_cond(:,con)) == false
-            respscore{con} = nan(ntr,1);
-            resp{con} = false(ntr,1);
-            respnull{con} = nan(ntr*nfake,1);
-            respthr(con) = NaN;
-            run_notes(end+1) = string(condis{con}) + ": no channel with a typical trial z >= chan_z_min in template round " + rnd + ", no response trials called";
-            break
+            fresp = find(t_bin >= fake_ms(f)+resp_ms(1) & t_bin < fake_ms(f)+resp_ms(2)); %fake response window
+            fpre = find(t_bin >= fake_ms(f)+pre_end_ms-pre_resp_ms & t_bin < fake_ms(f)+pre_end_ms); %and its "before" stretch
+            Xf(:,:,:,f) = rate{con}(:,fresp,:) - median(rate{con}(:,fpre,:),2);
         end
 
-        %trial scores and the threshold
-        respscore{con} = mean(zch(:,respchans_cond(:,con)),2); % [trials x 1]
-        respnull{con} = mean(zfake(:,respchans_cond(:,con)),2); % [(trials*fake windows) x 1]
-        respthr(con) = prctile(respnull{con}, resp_null_prct); %a response has to beat this
-        resp{con} = respscore{con} > respthr(con);
+        use = true(ntr,1); %trials the templates are built from (round 1: all of them)
+        prevresp = []; %last round's calls
+        for rnd = 1:tmpl_iter+1
+            %each trial's template: trimmed mean of the other trials in use
+            T = zeros(ntr,nw,nch,'single'); % [trials x template bins x channels]
+            for tr = 1:ntr
+                others = use;
+                others(tr) = false;
+                T(tr,:,:) = trimmean(X(others,:,:), tmpl_trim, 1);
+            end
+            den = sum(T.^2,2); % [trials x 1 x channels] size of each template
+            den(den == 0) = NaN; %flat template (silent channel): no score
 
-        %rebuild the templates from the trials that passed? (not if nothing changed or too few passed)
-        if isequal(resp{con}, prevresp)
-            break
+            %scores, real and fake
+            sc_ch = reshape(sum(X.*T,2)./den, ntr, nch); % [trials x channels]
+            scf_ch = zeros(ntr,nfake,nch,'single');
+            for f = 1:nfake
+                scf_ch(:,f,:) = sum(Xf(:,:,:,f).*T,2)./den; %each fake window against the same trial's template
+            end
+            scf_ch = reshape(scf_ch, ntr*nfake, nch); % [(trials*fake windows) x channels]
+
+            %each channel's scores in units of its no-stim spread
+            fakemu = mean(scf_ch,1,'omitnan'); % [1 x channels]
+            fakesd = std(scf_ch,0,1,'omitnan'); % [1 x channels]
+            fakesd(fakesd == 0) = NaN; %silent channel, drops out
+            zch = (sc_ch - fakemu) ./ fakesd; % [trials x channels]
+            zfake = (scf_ch - fakemu) ./ fakesd; % [(trials*fake windows) x channels]
+
+            %this condition's responsive channels
+            chan_medz_cond(:,con) = median(zch,1,'omitnan')';
+            respchans_cond(:,con) = chan_medz_cond(:,con) >= chan_z_min;
+            tmpl_rounds(con) = rnd;
+            if any(respchans_cond(:,con)) == false
+                respscore{con} = nan(ntr,1);
+                resp{con} = false(ntr,1);
+                respnull{con} = nan(ntr*nfake,1);
+                respthr(con) = NaN;
+                run_notes(end+1) = string(condis{con}) + ": no channel with a typical trial z >= chan_z_min in template round " + rnd + ", no response trials called";
+                break
+            end
+
+            %trial scores and the threshold
+            respscore{con} = mean(zch(:,respchans_cond(:,con)),2); % [trials x 1]
+            respnull{con} = mean(zfake(:,respchans_cond(:,con)),2); % [(trials*fake windows) x 1]
+            respthr(con) = prctile(respnull{con}, resp_null_prct); %a response has to beat this
+            resp{con} = respscore{con} > respthr(con);
+
+            %rebuild the templates from the trials that passed? (not if nothing changed or too few passed)
+            if isequal(resp{con}, prevresp)
+                break
+            end
+            if sum(resp{con}) < 3
+                run_notes(end+1) = string(condis{con}) + ": only " + sum(resp{con}) + " response trial(s) in template round " + rnd + ", the template wasn't rebuilt from them";
+                break
+            end
+            prevresp = resp{con};
+            use = resp{con};
         end
-        if sum(resp{con}) < 3
-            run_notes(end+1) = string(condis{con}) + ": only " + sum(resp{con}) + " response trial(s) in template round " + rnd + ", the template wasn't rebuilt from them";
-            break
+
+        %the final template, for the pictures (trimmed mean of the response trials, no leave-one-out)
+        if sum(resp{con}) >= 2
+            resp_tmpl{con} = reshape(trimmean(X(resp{con},:,:), tmpl_trim, 1), nw, nch);
+        else
+            resp_tmpl{con} = nan(nw,nch,'single');
         end
-        prevresp = resp{con};
-        use = resp{con};
     end
-
-    %the final template, for the pictures (trimmed mean of the response trials, no leave-one-out)
-    if sum(resp{con}) >= 2
-        resp_tmpl{con} = reshape(trimmean(X(resp{con},:,:), tmpl_trim, 1), nw, nch);
-    else
-        resp_tmpl{con} = nan(nw,nch,'single');
-    end
+    clear X Xf T den sc_ch scf_ch zch zfake
 end
-clear X Xf T den sc_ch scf_ch zch zfake
 
 %channels responsive in any condition (what the later sections use: alignment, plot labels)
 chan_medz = max(chan_medz_cond,[],2); % [channels x 1] best typical trial z over the conditions
 respchans = any(respchans_cond,2); % [channels x 1]
 if any(respchans) == false
-    error(['No channel has a typical trial z >= chan_z_min (' num2str(chan_z_min) ') in any condition, so no responses can be called. Try a lower chan_z_min'])
+    if resp_method == 2
+        error(['No channel''s condition-mean trace peaks >= resp_z (' num2str(resp_z) ') robust SDs above its baseline in any condition. Try a lower resp_z'])
+    else
+        error(['No channel has a typical trial z >= chan_z_min (' num2str(chan_z_min) ') in any condition, so no responses can be called. Try a lower chan_z_min'])
+    end
 end
 
 %{
@@ -777,9 +929,10 @@ end
 %% Data Visualization: Every trial, response or not
 %(Quality Control: plot_respcheck)
 
-%per condition: every trial as a heatmap (rate summed over the condition's responsive channels, recording
-%order), a strip beside it marking which got called a response, and the mean of the response vs
-%no-response trials underneath. Then one figure of every condition's final response template
+%per condition: every trial as a heatmap (rate of ONE V1 channel: kept channel 2 of the shank with the highest
+%Light score; recording order) and the same trials as stacked lines, a strip marking which got called a response, and the
+%mean of the response vs no-response trials underneath. Then one figure of every condition's final response
+%template (summed over its responsive channels)
 if plot_respcheck == 1
     disp('MUA: Every-trial heatmaps, by response call')
 
@@ -794,14 +947,42 @@ if plot_respcheck == 1
     pidx = find(t_bin >= plot_ms(1) & t_bin < plot_ms(2)); %bins shown
     t_plot = t_bin(pidx); %ms
 
+    %the channel shown: always the 2nd KEPT channel (from the top) of the V1 shank with the highest "Light" score
+    %(ProbeInfo.ShankLabels); fixed on purpose, not a Setup option
+    v1_shank_label = "Light";
+    v1_ref_row = 2;
+    if isfield(ProbeInfo,'ShankLabels') == false || numel(ProbeInfo.ShankLabels) < prb || isstruct(ProbeInfo.ShankLabels{prb}) == false ...
+            || isfield(ProbeInfo.ShankLabels{prb}, char(v1_shank_label)) == false
+        haslabels = 'none';
+        if isfield(ProbeInfo,'ShankLabels') && numel(ProbeInfo.ShankLabels) >= prb && isstruct(ProbeInfo.ShankLabels{prb})
+            haslabels = strjoin(fieldnames(ProbeInfo.ShankLabels{prb}),', ');
+        end
+        error(['No ShankLabels.' char(v1_shank_label) ' on the V1 probe. Labels there: ' haslabels])
+    end
+    [~,pkv] = max(ProbeInfo.ShankLabels{prb}.(char(v1_shank_label))); %shank with the highest score
+    keptv = pmap(:, pkv); %that shank, top to bottom
+    keptv = keptv(keptv > 0 & ismember(keptv, chanlist)); %its kept channels only, still top to bottom
+    if numel(keptv) < v1_ref_row
+        error(['V1 shank ' num2str(pkv) ' has only ' num2str(numel(keptv)) ' kept channels, v1_ref_row is ' num2str(v1_ref_row)])
+    end
+    v1_qcch = keptv(v1_ref_row); %raw channel ID
+    chi = find(chanlist == v1_qcch); %its place in chanlist
+
     for con = 1:ncond
         %trsum = sum(rate{con}(:,pidx,respchans),3); %commented out: responsive channels are per condition now
-        trsum = sum(rate{con}(:,pidx,respchans_cond(:,con)),3); % [trials x bins shown] rate summed over this condition's responsive channels
+        %trsum = sum(rate{con}(:,pidx,respchans_cond(:,con)),3); %commented out: the sum over channels hid single-channel responses, one channel now
+        trsum = reshape(rate{con}(:,pidx,chi), ntrials(con), numel(pidx)); % [trials x bins shown] spikes/s, channel v1_qcch
         rtr = resp{con} == true;
+        if respchans_cond(chi,con) == true
+            rtxt = 'responsive';
+        else
+            rtxt = 'not responsive';
+        end
 
         figure()
         set(gcf, 'Position', get(0, 'Screensize'));
-        tl = tiledlayout(3,12,'TileSpacing','compact','Padding','compact');
+        % tl = tiledlayout(3,12,'TileSpacing','compact','Padding','compact'); %commented out: a second column (stacked trials) was added
+        tl = tiledlayout(3,24,'TileSpacing','compact','Padding','compact'); %left half: heatmap, strip, means; right half: every trial stacked
 
         %all trials as an image, in recording order
         ax1 = nexttile(tl,1,[2 11]);
@@ -809,10 +990,11 @@ if plot_respcheck == 1
         xline(ax1,0,'w')
         xline(ax1,resp_ms,'w--')
         cb = colorbar(ax1);
-        cb.Label.String = 'spikes/s, summed over responsive channels';
+        cb.Label.String = ['spikes/s, CH' num2str(v1_qcch)];
         ylabel(ax1,'trial (recording order)')
         set(ax1,'XTickLabel',[])
-        title(ax1,[animal ' ' condis{con} ': ' num2str(sum(rtr)) ' of ' num2str(ntrials(con)) ' trials called a response'])
+        title(ax1,{[animal ' ' condis{con} ': ' num2str(sum(rtr)) ' of ' num2str(ntrials(con)) ' trials called a response (call made on the responsive channels)'], ...
+            ['showing CH' num2str(v1_qcch) ': kept channel ' num2str(v1_ref_row) ' of the peak ' char(v1_shank_label) ' shank (shank ' num2str(pkv) '), ' rtxt ' in this condition']},'Interpreter','none')
 
         %strip beside it: green = response, grey = no response
         ax2 = nexttile(tl,12,[2 1]);
@@ -823,7 +1005,8 @@ if plot_respcheck == 1
         title(ax2,'resp?')
 
         %mean trace of the response vs no-response trials
-        ax3 = nexttile(tl,25,[1 11]);
+        % ax3 = nexttile(tl,25,[1 11]); %commented out: the grid is 24 wide now
+        ax3 = nexttile(tl,49,[1 11]); %row 3, left half
         plot(ax3, t_plot, mean(trsum(rtr,:),1), 'Color',[0 0.6 0], 'LineWidth',1.5)
         hold(ax3,'on')
         plot(ax3, t_plot, mean(trsum(rtr == false,:),1), 'Color',[.5 .5 .5], 'LineWidth',1.5)
@@ -834,6 +1017,31 @@ if plot_respcheck == 1
         xlabel(ax3,'ms from stim onset')
         ylabel(ax3,'spikes/s')
         legend(ax3,{['response (' num2str(sum(rtr)) ')'],['no response (' num2str(sum(rtr == false)) ')']},'Location','northeast')
+
+        %right half: every trial as its own line, one below the other (trial 1 on top), green = response, grey = no response
+        ax4 = nexttile(tl,13,[3 12]);
+        off = prctile(trsum(:),95); %spikes/s each trial is moved down: most of a trial's trace stays clear of the next one
+        if isnan(off) || off <= 0
+            off = 1;
+        end
+        hold(ax4,'on')
+        for tr = 1:ntrials(con)
+            if rtr(tr) == true
+                col = [0 0.6 0]; %response
+            else
+                col = [.6 .6 .6]; %no response
+            end
+            plot(ax4, t_plot, trsum(tr,:) - (tr-1)*off, 'Color',col, 'LineWidth',0.75)
+        end
+        xline(ax4,0)
+        xline(ax4,resp_ms,'--')
+        hold(ax4,'off')
+        xlim(ax4,plot_ms)
+        ylim(ax4,[-(ntrials(con)-1)*off - off, max(trsum(1,:)) + off])
+        set(ax4,'YTick',fliplr(-(0:ntrials(con)-1)*off),'YTickLabel',fliplr(trinfo{con}(:,2)')) %each line labelled with its trial number
+        xlabel(ax4,'ms from stim onset')
+        ylabel(ax4,'trial (recording order)')
+        title(ax4,['every trial, CH' num2str(v1_qcch) ' (each moved down ' num2str(off,'%.0f') ' spikes/s): green = response, grey = no response'])
 
         if qc_plotsave == 1
             fname = sprintf([animal '-' condis{con} '-' ProbeInfo.Areas{prb} '_Probe' '-' 'resptrials_trials']);
@@ -1871,6 +2079,13 @@ if do_S1 == 1
     s1_refch = keptsh(s1_ref_row); %raw channel ID
     s1_refidx = find(chanlist_s1 == s1_refch); %its place in chanlist_s1
 
+    %the shank channels averaged for the V1-probe maps: its first s1_shank_nch kept channels from the top
+    s1_shankch = keptsh(1:min(s1_shank_nch, numel(keptsh))); %raw channel IDs
+    if numel(s1_shankch) < s1_shank_nch
+        run_notes(end+1) = "S1 shank " + pkshank + " has only " + numel(keptsh) + " kept channels, the V1-probe maps average those (s1_shank_nch = " + s1_shank_nch + ")";
+    end
+    s1_shankidx = find(ismember(chanlist_s1, s1_shankch)); %their places in chanlist_s1
+
     lfp_s1 = cell(1,ncond); %{conditions} [response trials x samples x S1 channels] uV, single
     for con = 1:ncond
         for file = 1:numel(condi_files{con})
@@ -1978,6 +2193,12 @@ if do_S1 == 1
     shape_ppix = cell(1,ncond); %{conditions} [freqs x windows x S1 channels] pixel p
     shape_sig = cell(1,ncond); %{conditions} [freqs x windows x S1 channels] pixels in significant clusters
     shape_clustthr = nan(1,ncond); %cluster threshold per condition
+    %the mirror maps on the V1 probe: each V1 channel's rhythmicity vs the main S1 shank (mean power of s1_shankch)
+    r_shape_v1 = cell(1,ncond); %{conditions} [freqs x windows x V1 channels] shape r
+    shape_zpix_v1 = cell(1,ncond); %{conditions} [freqs x windows x V1 channels] pixel z vs the shuffles
+    shape_ppix_v1 = cell(1,ncond); %{conditions} [freqs x windows x V1 channels] pixel p
+    shape_sig_v1 = cell(1,ncond); %{conditions} [freqs x windows x V1 channels] pixels in significant clusters
+    shape_clustthr_v1 = nan(1,ncond); %cluster threshold per condition (over the V1 probe)
 
     for con = g2cons
         nresp = size(lfp_s1{con},1); %response trials (lfp_s1 only holds these)
@@ -1992,6 +2213,7 @@ if do_S1 == 1
         %per-trial values, this condition only
         v1trsum = zeros(nftf,nt,nresp); % [freqs x windows x trials] V1 rhythmicity summed over the responsive channels
         v1trn = zeros(nftf,nt,nresp); %how many responsive channels went into each
+        v1ch = nan(nftf,nt,nresp,nrch,'single'); % [freqs x windows x trials x responsive V1 channels] each one's rhythmicity (for the V1-probe maps)
         s1tr = zeros(nftf,nt,nresp,nch_s1,'single'); % [freqs x windows x trials x S1 channels] S1 power, single saves memory
 
         for ti = 1:nt
@@ -2000,7 +2222,9 @@ if do_S1 == 1
             bidx = b0 + (0:tf_win_ms-1);
             lidx = l0 + (0:tf_win_ms-1);
 
-            %V1, responsive channels
+            %V1, responsive channels (each kept on its own too, for the V1-probe maps)
+            %(every kept channel was tried for the V1-probe maps and dropped: low-firing channels have windows without
+            %spikes, so trials dropped in and out block by block and the maps came out in blocky patches)
             for i = 1:nrch
                 X = double(reshape(spkcount{con}(rtrs,bidx,rch(i)), nresp, tf_win_ms))'; % [window samples x trials] spikes per ms
                 m = mean(X,1); % [1 x trials] mean count per ms in this window
@@ -2014,7 +2238,8 @@ if do_S1 == 1
                 lvl = 2*m/fs1; %random-firing level of each trial in this window
                 lvl(lvl == 0) = NaN; %no spikes, no rhythmicity
                 R = P(fk_tf,:) ./ lvl; % [freqs x trials] 1 = random firing
-                good = isnan(R) == false;
+                v1ch(:,ti,:,i) = single(reshape(R, nftf, 1, nresp)); %this channel, per trial (NaN = no spikes)
+                good = isnan(R) == false; %and into the responsive-channel mean (the S1-probe maps)
                 R(good == false) = 0;
                 v1trsum(:,ti,:) = v1trsum(:,ti,:) + reshape(R, nftf, 1, nresp); %per trial
                 v1trn(:,ti,:) = v1trn(:,ti,:) + reshape(good, nftf, 1, nresp);
@@ -2038,6 +2263,14 @@ if do_S1 == 1
         v1c = 10*log10(v1trsum ./ v1trn); % [freqs x windows x trials]
         v1c(isinf(v1c)) = NaN;
         v1tr{con} = v1c;
+        %and every V1 channel on its own, dB (NaN = no spikes in that window)
+        v1ch = 10*log10(v1ch); % [freqs x windows x trials x V1 channels]
+        v1ch(isinf(v1ch)) = NaN;
+
+        %S1 power per trial and channel, dB, and the main shank's curve: mean dB of its first s1_shank_nch kept channels
+        s1db = 10*log10(s1tr); % [freqs x windows x trials x S1 channels] single
+        s1db(isinf(s1db)) = NaN;
+        s1sh = mean(double(s1db(:,:,:,s1_shankidx)),4,'omitnan'); % [freqs x windows x trials]
 
         %shape of the time courses: at each frequency, within each trial, correlate the V1 rhythmicity curve and
         %the S1 power curve over a sliding block of windows (shape_block_ms of centres), then average the trials'
@@ -2056,23 +2289,13 @@ if do_S1 == 1
         %a multiply and a sum. Windows where V1 had no spikes are left out of the V1 curve but not the S1 curve
         %(slight approximation; rare once the responsive channels are averaged)
 
-        %V1: each trial's block curve, centred and scaled to length 1 (once, the same for every S1 channel)
-        Vn = zeros(nftf,L,nresp,nbk,'single'); % [freqs x block windows x trials x blocks]
-        Vok = false(nftf,1,nresp,nbk); %trial usable in that block (>= 5 windows with spikes, not flat)
-        for k = 1:nbk
-            a = v1c(:, bc(k)-hb : bc(k)+hb, :); % [freqs x block windows x trials]
-            okv = isnan(a) == false;
-            a(okv == false) = 0;
-            nv = sum(okv,2);
-            da = (a - sum(a,2)./nv) .* okv; %deviations from the trial's block mean (0 where no spikes)
-            den = sqrt(sum(da.^2,2));
-            Vok(:,:,:,k) = nv >= 5 & den > 0;
-            da = da ./ den;
-            da(isnan(da)) = 0;
-            Vn(:,:,:,k) = single(da);
-        end
+        %Two sets of maps, the same maths: side 1 = S1 probe, each S1 channel vs the responsive-V1 mean (as before);
+        %side 2 = V1 probe, each V1 channel vs the main S1 shank curve. The fixed curve of a side is centred and
+        %scaled once; the per-channel curves inside the channel loop.
+        %V1-style scaling: windows without spikes left out, trial usable in a block if >= 5 windows have spikes.
+        %S1-style scaling: NaN set to 0.
 
-        %the shuffles: the same pairings for every S1 channel (needed for the max over channels)
+        %the shuffles: the same pairings for every channel and both sides (needed for the max over channels)
         rng('default') %same shuffles every run (per condition, so each is reproducible on its own)
         permset = zeros(n_shuf, nresp);
         for s = 1:n_shuf
@@ -2083,11 +2306,9 @@ if do_S1 == 1
             permset(s,:) = pm;
         end
 
-        %Speed: every V1 trial x S1 trial pairing is worked out ONCE per S1 channel (one batched matrix product,
+        %Speed: every V1 trial x S1 trial pairing is worked out ONCE per channel (one batched matrix product,
         %pagemtimes), so the real map is the trials matched with themselves and each shuffle just picks other
         %entries of that table, instead of redoing the multiply-and-sum for every shuffle (~4x faster, same numbers)
-        V2 = reshape(permute(Vn,[3 2 1 4]), nresp, L, nftf*nbk); % [trials x block windows x (freqs*blocks)] V1 curves
-        Vokp = reshape(permute(Vok,[3 1 4 2]), nresp, nftf*nbk); % [trials x (freqs*blocks)] usable
         diagidx = (1:nresp)' + ((1:nresp)'-1)*nresp; %table entries of each trial with itself
         shufidx = (1:nresp) + (permset-1)*nresp; % [shuffles x trials] table entries of trial i with its shuffled partner
 
@@ -2102,116 +2323,196 @@ if do_S1 == 1
         end
         cname = condis{con}; %this condition's name, for the progress lines
 
-        rsh = nan(nftf,nt,nch_s1); % [freqs x windows (block centres) x S1 channels], NaN at the edges
-        zpx = nan(nftf,nt,nch_s1); % [freqs x windows x S1 channels] pixel z vs the shuffles
-        ppx = nan(nftf,nt,nch_s1); % [freqs x windows x S1 channels] pixel p (two-sided, from the shuffles)
-        nullmax = zeros(n_shuf, nch_s1); %biggest chance cluster mass per shuffle and channel
-        % for c1 = 1:nch_s1 %commented out: now on nw workers (one S1 channel each; nw = 0 runs it as this loop)
-        parfor (c1 = 1:nch_s1, nw) %S1 channels don't depend on each other (each worker gets V2 and the index tables, a few MB)
-            s1l = 10*log10(double(s1tr(:,:,:,c1))); % [freqs x windows x trials] dB
-            s1l(isinf(s1l)) = NaN;
+        for side = 1:2
+            %this side's channels (one map each) and the fixed curve every channel is compared with
+            if side == 1
+                nitem = nch_s1; %S1 channels
+                itemid = chanlist_s1;
+                itemcurves = cell(1,nitem); %{channels} [freqs x windows x trials] dB, each S1 channel's power
+                for c = 1:nitem
+                    itemcurves{c} = double(s1db(:,:,:,c));
+                end
+                fixcurve = v1c; %V1 rhythmicity, responsive-channel mean
+                sidename = 'S1';
+            else
+                % nitem = nch; %commented out: every kept V1 channel gave blocky maps, responsive channels only now
+                % itemid = chanlist;
+                nitem = nrch; %responsive V1 channels
+                itemid = chanlist(rch);
+                itemcurves = cell(1,nitem); %{channels} [freqs x windows x trials] dB, each responsive V1 channel's rhythmicity
+                for c = 1:nitem
+                    itemcurves{c} = double(v1ch(:,:,:,c));
+                end
+                fixcurve = s1sh; %main S1 shank, mean power of s1_shankch
+                sidename = 'V1';
+            end
 
-            %S1: each trial's block curve, centred and scaled to length 1
-            Sn = zeros(nftf,L,nresp,nbk,'single');
+            %the fixed curve, centred and scaled once per block. Side 1 it is V1 (V1-style), side 2 it is S1 (S1-style)
+            Fn = zeros(nftf,L,nresp,nbk,'single'); % [freqs x block windows x trials x blocks]
+            Fok = true(nftf,1,nresp,nbk); %trial usable in that block (V1 only: >= 5 windows with spikes, not flat)
             for k = 1:nbk
-                b = s1l(:, bc(k)-hb : bc(k)+hb, :);
-                b(isnan(b)) = 0;
-                db = b - mean(b,2);
-                db = db ./ sqrt(sum(db.^2,2));
-                db(isnan(db)) = 0;
-                Sn(:,:,:,k) = single(db);
+                a = fixcurve(:, bc(k)-hb : bc(k)+hb, :); % [freqs x block windows x trials]
+                if side == 1
+                    okv = isnan(a) == false;
+                    a(okv == false) = 0;
+                    nv = sum(okv,2);
+                    da = (a - sum(a,2)./nv) .* okv; %deviations from the trial's block mean (0 where no spikes)
+                    den = sqrt(sum(da.^2,2));
+                    Fok(:,:,:,k) = nv >= 5 & den > 0;
+                    da = da ./ den;
+                else
+                    a(isnan(a)) = 0;
+                    da = a - mean(a,2);
+                    da = da ./ sqrt(sum(da.^2,2));
+                end
+                da(isnan(da)) = 0;
+                Fn(:,:,:,k) = single(da);
+            end
+            if side == 1 %V1 goes first in the table (rows = V1 trials)
+                Ffix = reshape(permute(Fn,[3 2 1 4]), nresp, L, nftf*nbk); % [trials x block windows x (freqs*blocks)]
+            else %S1 goes second (columns = S1 trials)
+                Ffix = reshape(permute(Fn,[2 3 1 4]), L, nresp, nftf*nbk); % [block windows x trials x (freqs*blocks)]
+            end
+            Fokp = reshape(permute(Fok,[3 1 4 2]), nresp, nftf*nbk); % [trials x (freqs*blocks)] usable V1 trials (side 1)
+
+            rsh = nan(nftf,nt,nitem); % [freqs x windows (block centres) x channels], NaN at the edges
+            zpx = nan(nftf,nt,nitem); % [freqs x windows x channels] pixel z vs the shuffles
+            ppx = nan(nftf,nt,nitem); % [freqs x windows x channels] pixel p (two-sided, from the shuffles)
+            nullmax = zeros(n_shuf, nitem); %biggest chance cluster mass per shuffle and channel
+            % for c1 = 1:nch_s1 %commented out: now on nw workers (one channel each; nw = 0 runs it as this loop), both sides
+            parfor (c1 = 1:nitem, nw) %channels don't depend on each other (each worker gets the fixed table and the index tables, a few MB)
+                cur = itemcurves{c1}; % [freqs x windows x trials] this channel's curve, dB
+
+                %this channel's block curves, centred and scaled to length 1, then the table r(V1 trial i, S1 trial j)
+                Cn = zeros(nftf,L,nresp,nbk,'single');
+                Cok = true(nftf,1,nresp,nbk);
+                for k = 1:nbk
+                    b = cur(:, bc(k)-hb : bc(k)+hb, :);
+                    if side == 1 %S1 channel (S1-style)
+                        b(isnan(b)) = 0;
+                        db = b - mean(b,2);
+                        db = db ./ sqrt(sum(db.^2,2));
+                    else %V1 channel (V1-style: windows without spikes left out)
+                        okv = isnan(b) == false;
+                        b(okv == false) = 0;
+                        nv = sum(okv,2);
+                        db = (b - sum(b,2)./nv) .* okv;
+                        den = sqrt(sum(db.^2,2));
+                        Cok(:,:,:,k) = nv >= 5 & den > 0;
+                        db = db ./ den;
+                    end
+                    db(isnan(db)) = 0;
+                    Cn(:,:,:,k) = single(db);
+                end
+                if side == 1
+                    S2 = reshape(permute(Cn,[2 3 1 4]), L, nresp, nftf*nbk); % [block windows x trials x (freqs*blocks)]
+                    A = double(reshape(pagemtimes(Ffix, S2), nresp*nresp, nftf*nbk)); % [(trials*trials) x (freqs*blocks)]
+                    okp = Fokp; %usable V1 trials
+                else
+                    V2 = reshape(permute(Cn,[3 2 1 4]), nresp, L, nftf*nbk); % [trials x block windows x (freqs*blocks)]
+                    A = double(reshape(pagemtimes(V2, Ffix), nresp*nresp, nftf*nbk));
+                    okp = reshape(permute(Cok,[3 1 4 2]), nresp, nftf*nbk);
+                end
+                A(A > 0.9999) = 0.9999; %keep atanh finite
+                A(A < -0.9999) = -0.9999;
+                A = atanh(A); %Fisher z
+
+                %real map: each trial's V1 with its own S1, Fisher-z mean over trials
+                % rt = double(sum(Vn .* Sn, 2)); %commented out (and the 3 lines after): the table above does this in one go
+                % rt(Vok == false) = NaN;
+                % rt(rt > 0.9999) = 0.9999;
+                % rt(rt < -0.9999) = -0.9999;
+                % zreal = reshape(mean(atanh(rt),3,'omitnan'), nftf, nbk);
+                rt = A(diagidx,:); % [trials x (freqs*blocks)]
+                rt(okp == false) = NaN;
+                zreal = reshape(mean(rt,1,'omitnan'), nftf, nbk); % [freqs x blocks]
+
+                %shuffled maps
+                zsh = zeros(nftf,nbk,n_shuf,'single');
+                for s = 1:n_shuf
+                    % rt = double(sum(Vn .* Sn(:,:,permset(s,:),:), 2)); %commented out: picked from the table instead
+                    rt = A(shufidx(s,:),:); %V1 of trial i with S1 of another trial
+                    rt(okp == false) = NaN;
+                    zsh(:,:,s) = single(reshape(mean(rt,1,'omitnan'), nftf, nbk));
+                end
+                zsh(linemask_tf,:,:) = NaN;
+                zreal(linemask_tf,:) = NaN;
+
+                %pixel z and p against the shuffles
+                mu = mean(zsh,3,'omitnan');
+                sd = std(zsh,0,3,'omitnan');
+                zp = (zreal - mu) ./ sd; % [freqs x blocks]
+                pp = (sum(abs(zsh - mu) >= abs(zreal - mu), 3) + 1) / (n_shuf + 1);
+
+                %biggest chance cluster of each shuffle (its own map against the same shuffle mean / SD)
+                nm = zeros(n_shuf,1);
+                for s = 1:n_shuf
+                    zs = (double(zsh(:,:,s)) - mu) ./ sd;
+                    mx = 0;
+                    for sgn = [1 -1] %positive and negative clusters apart
+                        cc = bwconncomp(sgn*zs > zthr, 4);
+                        for q = 1:cc.NumObjects
+                            mx = max(mx, sum(abs(zs(cc.PixelIdxList{q}))));
+                        end
+                    end
+                    nm(s) = mx;
+                end
+
+                %this channel's results first, then into the big arrays in one go (parfor needs it that way)
+                rsh_c = nan(nftf,nt);
+                zpx_c = nan(nftf,nt);
+                ppx_c = nan(nftf,nt);
+                rsh_c(:,bc) = tanh(zreal);
+                zpx_c(:,bc) = zp;
+                ppx_c(:,bc) = pp;
+                rsh(:,:,c1) = rsh_c;
+                zpx(:,:,c1) = zpx_c;
+                ppx(:,:,c1) = ppx_c;
+                nullmax(:,c1) = nm;
+                disp(['S1: ' cname ', ' sidename ' probe: shape-map shuffles done for CH' num2str(itemid(c1))])
             end
 
-            %the table: r of V1 trial i with S1 trial j, every pairing, for every frequency and block, Fisher z
-            S2 = reshape(permute(Sn,[2 3 1 4]), L, nresp, nftf*nbk); % [block windows x trials x (freqs*blocks)]
-            A = double(reshape(pagemtimes(V2, S2), nresp*nresp, nftf*nbk)); % [(trials*trials) x (freqs*blocks)]
-            A(A > 0.9999) = 0.9999; %keep atanh finite
-            A(A < -0.9999) = -0.9999;
-            A = atanh(A);
-
-            %real map: each trial's V1 with its own S1, Fisher-z mean over trials
-            % rt = double(sum(Vn .* Sn, 2)); %commented out (and the 3 lines after): the table above does this in one go
-            % rt(Vok == false) = NaN;
-            % rt(rt > 0.9999) = 0.9999;
-            % rt(rt < -0.9999) = -0.9999;
-            % zreal = reshape(mean(atanh(rt),3,'omitnan'), nftf, nbk);
-            rt = A(diagidx,:); % [trials x (freqs*blocks)]
-            rt(Vokp == false) = NaN;
-            zreal = reshape(mean(rt,1,'omitnan'), nftf, nbk); % [freqs x blocks]
-
-            %shuffled maps
-            zsh = zeros(nftf,nbk,n_shuf,'single');
-            for s = 1:n_shuf
-                % rt = double(sum(Vn .* Sn(:,:,permset(s,:),:), 2)); %commented out: picked from the table instead
-                rt = A(shufidx(s,:),:); %V1 of trial i with S1 of another trial
-                rt(Vokp == false) = NaN;
-                zsh(:,:,s) = single(reshape(mean(rt,1,'omitnan'), nftf, nbk));
-            end
-            zsh(linemask_tf,:,:) = NaN;
-            zreal(linemask_tf,:) = NaN;
-
-            %pixel z and p against the shuffles
-            mu = mean(zsh,3,'omitnan');
-            sd = std(zsh,0,3,'omitnan');
-            zp = (zreal - mu) ./ sd; % [freqs x blocks]
-            pp = (sum(abs(zsh - mu) >= abs(zreal - mu), 3) + 1) / (n_shuf + 1);
-
-            %biggest chance cluster of each shuffle (its own map against the same shuffle mean / SD)
-            nm = zeros(n_shuf,1);
-            for s = 1:n_shuf
-                zs = (double(zsh(:,:,s)) - mu) ./ sd;
-                mx = 0;
-                for sgn = [1 -1] %positive and negative clusters apart
-                    cc = bwconncomp(sgn*zs > zthr, 4);
+            %cluster threshold: biggest chance cluster over all of this side's channels, per shuffle
+            cthr = prctile(max(nullmax,[],2), 100*(1 - clust_p));
+            sgx = false(nftf,nt,nitem); %pixels in significant clusters
+            for c1 = 1:nitem
+                zp = zpx(:,bc,c1);
+                sigm = false(nftf,nbk);
+                for sgn = [1 -1]
+                    cc = bwconncomp(sgn*zp > zthr, 4);
                     for q = 1:cc.NumObjects
-                        mx = max(mx, sum(abs(zs(cc.PixelIdxList{q}))));
+                        if sum(abs(zp(cc.PixelIdxList{q}))) > cthr
+                            sigm(cc.PixelIdxList{q}) = true;
+                        end
                     end
                 end
-                nm(s) = mx;
+                sgx(:,bc,c1) = sigm;
             end
 
-            %this channel's results first, then into the big arrays in one go (parfor needs it that way)
-            rsh_c = nan(nftf,nt);
-            zpx_c = nan(nftf,nt);
-            ppx_c = nan(nftf,nt);
-            rsh_c(:,bc) = tanh(zreal);
-            zpx_c(:,bc) = zp;
-            ppx_c(:,bc) = pp;
-            rsh(:,:,c1) = rsh_c;
-            zpx(:,:,c1) = zpx_c;
-            ppx(:,:,c1) = ppx_c;
-            nullmax(:,c1) = nm;
-            disp(['S1: ' cname ' shape-map shuffles done for CH' num2str(chanlist_s1(c1))])
-        end
-
-        %cluster threshold: biggest chance cluster over all S1 channels, per shuffle
-        cthr = prctile(max(nullmax,[],2), 100*(1 - clust_p));
-        sgx = false(nftf,nt,nch_s1); %pixels in significant clusters
-        for c1 = 1:nch_s1
-            zp = zpx(:,bc,c1);
-            sigm = false(nftf,nbk);
-            for sgn = [1 -1]
-                cc = bwconncomp(sgn*zp > zthr, 4);
-                for q = 1:cc.NumObjects
-                    if sum(abs(zp(cc.PixelIdxList{q}))) > cthr
-                        sigm(cc.PixelIdxList{q}) = true;
-                    end
-                end
+            %store this condition's results
+            if side == 1
+                r_shape_ch{con} = rsh;
+                shape_zpix{con} = zpx;
+                shape_ppix{con} = ppx;
+                shape_sig{con} = sgx;
+                shape_clustthr(con) = cthr;
+            else %back onto every kept V1 channel (NaN / false for the non-responsive ones), so it lines up with chanlist
+                r_shape_v1{con} = nan(nftf,nt,nch);
+                shape_zpix_v1{con} = nan(nftf,nt,nch);
+                shape_ppix_v1{con} = nan(nftf,nt,nch);
+                shape_sig_v1{con} = false(nftf,nt,nch);
+                r_shape_v1{con}(:,:,rch) = rsh;
+                shape_zpix_v1{con}(:,:,rch) = zpx;
+                shape_ppix_v1{con}(:,:,rch) = ppx;
+                shape_sig_v1{con}(:,:,rch) = sgx;
+                shape_clustthr_v1(con) = cthr;
             end
-            sgx(:,bc,c1) = sigm;
         end
-
-        %store this condition's results
-        r_shape_ch{con} = rsh;
-        shape_zpix{con} = zpx;
-        shape_ppix{con} = ppx;
-        shape_sig{con} = sgx;
-        shape_clustthr(con) = cthr;
     end
     if all(ntr_s1 == 0)
         error(['No ' grpnames{2} ' condition has 3 or more response trials, nothing to compare'])
     end
-    clear X P Y R v1trsum v1trn s1tr s1l a b da db rt Vn Sn zsh okv v1c rsh zpx ppx sgx V2 Vokp shufidx
+    clear X P Y R v1trsum v1trn v1ch s1tr s1db s1sh itemcurves fixcurve Fn Ffix Fokp a b da db rt zsh okv v1c rsh zpx ppx sgx shufidx
     elapsed_time = toc;
     fprintf('execution time: %.2f seconds\n', elapsed_time);
 end
@@ -2219,8 +2520,9 @@ end
 
 %% Data Visualization: V1 spike rhythmicity vs S1 power over time
 
-%the shape-match maps only: per S1 channel (S1 probe layout), a time-frequency map coloured by how alike the
-%shapes of the V1 rhythmicity and S1 power time courses are, with the trial-shuffle significance
+%the shape-match maps only: per S1 channel (S1 probe layout) and per V1 channel (V1 probe layout, vs the main
+%S1 shank), a time-frequency map coloured by how alike the shapes of the V1 rhythmicity and S1 power time
+%courses are, with the trial-shuffle significance
 %(the V1 / S1 time-frequency maps and the r(t) pictures that were here were dropped as not useful)
 if do_S1 == 1 && plot_lfpcoh == 1
     disp('S1: Making the shape-match maps')
@@ -2234,106 +2536,152 @@ if do_S1 == 1 && plot_lfpcoh == 1
 
     nc = 128; %blue - white - red colour map (0 = white)
     divmap = [linspace(0,1,nc)' linspace(0.3,1,nc)' ones(nc,1); ones(nc,1) linspace(1,0.2,nc)' linspace(1,0.2,nc)'];
-    [nrow_s1,nshank_s1] = size(pmap_s1); %S1 probe layout
-
-    %per S1 channel (S1 probe layout), a time-frequency map where the colour = how alike the SHAPE
-    %of the V1 rhythmicity and S1 power time courses are at that frequency, around that time (per-trial r
-    %over a shape_block_ms block, Fisher-z averaged over the condition's trials).
-    %ONE figure, a panel per group 2 condition (slider; conditions are never pooled), one shared colour range
+    %Two figures, the same drawing: side 1 = S1 probe layout, each S1 channel's map (vs the responsive-V1 mean);
+    %side 2 = V1 probe layout, each V1 channel's map (vs the main S1 shank, mean of s1_shankch).
+    %Per channel, a time-frequency map where the colour = how alike the SHAPE of the V1 rhythmicity and S1
+    %power time courses are at that frequency, around that time (per-trial r over a shape_block_ms block,
+    %Fisher-z averaged over the condition's trials).
+    %Each figure: a panel per group 2 condition (slider; conditions are never pooled), one shared colour range
     %(an across-trial r per pixel was tried first and dropped: it compared values, not the shape over time)
     s1cons = find(ntr_s1 > 0); %group 2 conditions that were analysed
-    rlim = 0;
-    for con = s1cons
-        rlim = max(rlim, max(abs(r_shape_ch{con}(:)),[],'omitnan')); %one symmetric colour range for every panel
+    if map_alpha == 2 %how the not-significant pixels are shaded, for the titles
+        alphatxt = 'other pixels see-through by 1 - their shuffle p';
+    else
+        alphatxt = ['other pixels at alpha ' num2str(map_alpha_ns)];
     end
-    if isnan(rlim) || rlim == 0
-        rlim = 1;
-    end
+    for side = 1:2
+        if side == 1
+            pmap_x = pmap_s1; %S1 probe layout
+            chlist_x = chanlist_s1;
+            rmaps = r_shape_ch;
+            sigmaps = shape_sig;
+            ppmaps = shape_ppix; %pixel p (for map_alpha = 2)
+            boldch = s1_refch; %bold blue label: the single S1 channel
+            probename = 'S1 probe';
+            vstxt = 'V1 spike rhythmicity (responsive-channel mean) and each S1 channel''s power';
+            boldtxt = ['bold blue = CH' num2str(s1_refch)];
+            ftag = 'S1_vs_V1_timefreq_rmaps_S1probe';
+        else
+            pmap_x = pmap; %V1 probe layout
+            chlist_x = chanlist;
+            rmaps = r_shape_v1;
+            sigmaps = shape_sig_v1;
+            ppmaps = shape_ppix_v1; %pixel p (for map_alpha = 2)
+            boldch = chanlist(respchans); %bold blue labels: the responsive V1 channels
+            probename = [ProbeInfo.Areas{prb} ' probe'];
+            vstxt = ['each responsive V1 channel''s spike rhythmicity and the main S1 shank''s power (mean of CH' char(strjoin(string(s1_shankch'),', CH')) ')']; %char: a string inside [ ] would turn the whole title line into a string array
+            boldtxt = 'bold blue = responsive V1 channel';
+            ftag = 'S1_vs_V1_timefreq_rmaps_V1probe';
+        end
+        [nrow_x,nshank_x] = size(pmap_x);
 
-    s1fig = figure();
-    set(s1fig, 'Position', get(0, 'Screensize'));
-    for k = 1:numel(s1cons)
-        con = s1cons(k);
-        rmap = r_shape_ch{con};
-        sigmap = shape_sig{con};
-        %this condition's panel (only the first starts visible); Tag + UserData let the slider find it
-        pan = uipanel(s1fig, 'Units','normalized', 'Position',[0 0.05 1 0.95], 'BorderType','none', ...
-            'Tag','condpanel', 'UserData',k, 'Visible', k == 1);
-        tl = tiledlayout(pan,nrow_s1,nshank_s1,'TileSpacing','none','Padding','tight');
-        for row = 1:nrow_s1
-            for shank = 1:nshank_s1
-                chid = pmap_s1(row,shank); %raw channel ID at this spot
-                ax = nexttile(tl,(row-1)*nshank_s1 + shank);
-                if chid == 0 %no site here
-                    axis(ax,'off')
-                    continue
-                end
-                c1 = find(chanlist_s1 == chid);
-                if isempty(c1) %removed channel
-                    axis(ax,'off')
-                    text(ax,0.5,0.5,['CH' num2str(chid) ' removed'],'Units','normalized','HorizontalAlignment','center','Color',[.5 .5 .5])
-                    continue
-                end
-                h = imagesc(ax, tf_t, tf_f, rmap(:,:,c1));
-                set(h,'AlphaData',(isnan(rmap(:,:,c1)) == false) .* (0.35 + 0.65*sigmap(:,:,c1))) %NaN = blank, not significant = faded
-                axis(ax,'xy')
-                colormap(ax,divmap)
-                clim(ax,[-rlim rlim])
-                hold(ax,'on')
-                xline(ax,0,'k')
-                if any(sigmap(:,:,c1),'all')
-                    contour(ax, tf_t, tf_f, double(sigmap(:,:,c1)), [0.5 0.5], 'k', 'LineWidth',1) %outline the significant clusters
-                end
-                hold(ax,'off')
-                if chid == s1_refch %the single S1 channel
-                    text(ax,0.02,0.9,['CH' num2str(chid)],'Units','normalized','Color','b','FontWeight','bold')
-                else
-                    text(ax,0.02,0.9,['CH' num2str(chid)],'Units','normalized','Color','k')
-                end
-                if row < nrow_s1
-                    set(ax,'XTickLabel',[])
-                end
-                if shank > 1
-                    set(ax,'YTickLabel',[])
+        rlim = 0;
+        for con = s1cons
+            rlim = max(rlim, max(abs(rmaps{con}(:)),[],'omitnan')); %one symmetric colour range for every panel
+        end
+        if isnan(rlim) || rlim == 0
+            rlim = 1;
+        end
+
+        s1fig = figure();
+        set(s1fig, 'Position', get(0, 'Screensize'));
+        for k = 1:numel(s1cons)
+            con = s1cons(k);
+            rmap = rmaps{con};
+            sigmap = sigmaps{con};
+            ppmap = ppmaps{con};
+            %this condition's panel (only the first starts visible); Tag + UserData let the slider find it
+            pan = uipanel(s1fig, 'Units','normalized', 'Position',[0 0.05 1 0.95], 'BorderType','none', ...
+                'Tag','condpanel', 'UserData',k, 'Visible', k == 1);
+            tl = tiledlayout(pan,nrow_x,nshank_x,'TileSpacing','none','Padding','tight');
+            for row = 1:nrow_x
+                for shank = 1:nshank_x
+                    chid = pmap_x(row,shank); %raw channel ID at this spot
+                    ax = nexttile(tl,(row-1)*nshank_x + shank);
+                    if chid == 0 %no site here
+                        axis(ax,'off')
+                        continue
+                    end
+                    c1 = find(chlist_x == chid);
+                    if isempty(c1) %removed channel
+                        axis(ax,'off')
+                        text(ax,0.5,0.5,['CH' num2str(chid) ' removed'],'Units','normalized','HorizontalAlignment','center','Color',[.5 .5 .5])
+                        continue
+                    end
+                    if side == 2 && ismember(chid, boldch) == false %V1 probe: only responsive channels have a map
+                        axis(ax,'off')
+                        text(ax,0.5,0.5,['CH' num2str(chid) ' not responsive'],'Units','normalized','HorizontalAlignment','center','Color',[.5 .5 .5])
+                        continue
+                    end
+                    h = imagesc(ax, tf_t, tf_f, rmap(:,:,c1));
+                    % set(h,'AlphaData',(isnan(rmap(:,:,c1)) == false) .* (0.35 + 0.65*sigmap(:,:,c1))) %commented out: 0.35 hid the patterns, see map_alpha
+                    if map_alpha == 2 %by the pixel's shuffle p, significant clusters solid
+                        alph = max(1 - ppmap(:,:,c1), double(sigmap(:,:,c1)));
+                        alph(isnan(alph)) = 0;
+                    else %fixed, significant clusters solid
+                        alph = map_alpha_ns + (1 - map_alpha_ns)*double(sigmap(:,:,c1));
+                    end
+                    alph(isnan(rmap(:,:,c1))) = 0; %NaN = blank
+                    set(h,'AlphaData',alph)
+                    axis(ax,'xy')
+                    colormap(ax,divmap)
+                    clim(ax,[-rlim rlim])
+                    hold(ax,'on')
+                    xline(ax,0,'k')
+                    if any(sigmap(:,:,c1),'all')
+                        contour(ax, tf_t, tf_f, double(sigmap(:,:,c1)), [0.5 0.5], 'k', 'LineWidth',1) %outline the significant clusters
+                    end
+                    hold(ax,'off')
+                    if ismember(chid, boldch)
+                        text(ax,0.02,0.9,['CH' num2str(chid)],'Units','normalized','Color','b','FontWeight','bold')
+                    else
+                        text(ax,0.02,0.9,['CH' num2str(chid)],'Units','normalized','Color','k')
+                    end
+                    if row < nrow_x
+                        set(ax,'XTickLabel',[])
+                    end
+                    if shank > 1
+                        set(ax,'YTickLabel',[])
+                    end
                 end
             end
+            cb = colorbar(ax);
+            cb.Layout.Tile = 'east';
+            cb.Label.String = 'shape r (Fisher-z mean over trials)';
+            xlabel(tl,'ms from stim onset (window centre)')
+            ylabel(tl,'Hz')
+            % title(tl,{[animal ' S1 probe, ' grpnames{2} ' (' num2str(ntr2) ' response trials): ...  %commented out: one pooled group 2 map before
+            title(tl,{[animal ' ' probename ', ' condis{con} ' (' num2str(ntr_s1(con)) ' response trials; condition ' num2str(k) ' of ' num2str(numel(s1cons)) '): shape match between ' vstxt ' over time, per frequency'], ...
+                ['r over a ' num2str(shape_block_ms) ' ms block of ' num2str(tf_win_ms) ' ms windows around each time, per trial, Fisher-z averaged; red = they rise and fall together; ' boldtxt], ...
+                ['outlined / solid = cluster beats ' num2str(n_shuf) ' trial shuffles of this condition (pixel p < ' num2str(shuf_p) ', cluster p < ' num2str(clust_p) ', corrected over the whole ' probename '); ' alphatxt]},'Interpreter','none')
         end
-        cb = colorbar(ax);
-        cb.Layout.Tile = 'east';
-        cb.Label.String = 'shape r (Fisher-z mean over trials)';
-        xlabel(tl,'ms from stim onset (window centre)')
-        ylabel(tl,'Hz')
-        % title(tl,{[animal ' S1 probe, ' grpnames{2} ' (' num2str(ntr2) ' response trials): ...  %commented out: one pooled group 2 map before
-        title(tl,{[animal ' S1 probe, ' condis{con} ' (' num2str(ntr_s1(con)) ' response trials; condition ' num2str(k) ' of ' num2str(numel(s1cons)) '): shape match between V1 spike rhythmicity (responsive-channel mean) and each S1 channel''s power over time, per frequency'], ...
-            ['r over a ' num2str(shape_block_ms) ' ms block of ' num2str(tf_win_ms) ' ms windows around each time, per trial, Fisher-z averaged; red = they rise and fall together; bold blue = CH' num2str(s1_refch)], ...
-            ['outlined / not faded = cluster beats ' num2str(n_shuf) ' trial shuffles of this condition (pixel p < ' num2str(shuf_p) ', cluster p < ' num2str(clust_p) ', corrected over the whole S1 probe)']},'Interpreter','none')
-    end
 
-    %the slider (finds the panels by their Tag, so it still works in the saved figure)
-    if numel(s1cons) > 1
-        uicontrol(s1fig, 'Style','text', 'Units','normalized', 'Position',[0.18 0.008 0.11 0.03], ...
-            'String','condition:', 'HorizontalAlignment','right')
-        uicontrol(s1fig, 'Style','slider', 'Units','normalized', 'Position',[0.3 0.01 0.4 0.03], ...
-            'Min',1, 'Max',numel(s1cons), 'Value',1, 'SliderStep',[1 1]/(numel(s1cons)-1), ...
-            'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
-            num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
-    end
-    drawnow %show it now; the script doesn't wait, it carries on
-
-    if plotsave == 1
-        fname = sprintf([animal '-' 'S1_vs_V1_timefreq_rmaps_S1probe']);
-        % savefig(s1fig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact') %commented out: PNGs for now, one per panel
-        %one PNG per panel (= group 2 condition): show only panel k, save its layout (not the slider), then back to panel 1
-        ptags = condis(s1cons); %file name tag of each panel
-        pans = findobj(s1fig,'Tag','condpanel');
-        for k = 1:numel(ptags)
-            set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
-            pk = findobj(pans,'flat','UserData',k);
-            tlk = findobj(pk,'Type','tiledlayout');
-            exportgraphics(tlk,[save_directory '\Figures_StochRes\' animal '\' fname '-' ptags{k} '.png'],'Resolution',png_res)
+        %the slider (finds the panels by their Tag, so it still works in the saved figure)
+        if numel(s1cons) > 1
+            uicontrol(s1fig, 'Style','text', 'Units','normalized', 'Position',[0.18 0.008 0.11 0.03], ...
+                'String','condition:', 'HorizontalAlignment','right')
+            uicontrol(s1fig, 'Style','slider', 'Units','normalized', 'Position',[0.3 0.01 0.4 0.03], ...
+                'Min',1, 'Max',numel(s1cons), 'Value',1, 'SliderStep',[1 1]/(numel(s1cons)-1), ...
+                'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
+                num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
         end
-        set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
-        set(findobj(s1fig,'Style','slider'),'Value',1);
+        drawnow %show it now; the script doesn't wait, it carries on
+
+        if plotsave == 1
+            fname = sprintf([animal '-' ftag]);
+            % savefig(s1fig,[save_directory '\Figures_StochRes\' animal '\' fname],'compact') %commented out: PNGs for now, one per panel
+            %one PNG per panel (= group 2 condition): show only panel k, save its layout (not the slider), then back to panel 1
+            ptags = condis(s1cons); %file name tag of each panel
+            pans = findobj(s1fig,'Tag','condpanel');
+            for k = 1:numel(ptags)
+                set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
+                pk = findobj(pans,'flat','UserData',k);
+                tlk = findobj(pk,'Type','tiledlayout');
+                exportgraphics(tlk,[save_directory '\Figures_StochRes\' animal '\' fname '-' ptags{k} '.png'],'Resolution',png_res)
+            end
+            set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
+            set(findobj(s1fig,'Style','slider'),'Value',1);
+        end
     end
 end
 
@@ -2359,7 +2707,11 @@ end
 
 %response trials
 if exist('resp','var')
-    report(end+1) = "Response trials (template matching, " + resp_ms(1) + "-" + resp_ms(2) + " ms; score > the " + resp_null_prct + "th percentile of the condition's fake no-stim scores):";
+    if resp_method == 2
+        report(end+1) = "Response trials (method 2: channels 1-" + resp_shank_nch + " of one shank all stay >= " + resp_z + " robust SDs above their all-trial baseline " + base_use_ms(1) + " to " + base_use_ms(2) + " ms for >= " + resp_min_ms + " ms, within " + resp_together_ms + " ms of each other, " + peak_win_ms + " ms windows, in " + resp_ms(1) + "-" + resp_ms(2) + " ms):";
+    else
+        report(end+1) = "Response trials (template matching, " + resp_ms(1) + "-" + resp_ms(2) + " ms; score > the " + resp_null_prct + "th percentile of the condition's fake no-stim scores):";
+    end
     for con = 1:ncond
         report(end+1) = "  " + condis{con} + ": " + sum(resp{con}) + " of " + ntrials(con) + " (" + sprintf('%.0f',100*respfrac(con)) + "%), threshold " + sprintf('%.2f',respthr(con)) + ...
             ", " + sum(respchans_cond(:,con)) + " responsive channels, " + tmpl_rounds(con) + " template round(s)";
@@ -2446,6 +2798,22 @@ if do_S1 == 1 && exist('shape_sig','var')
             end
         end
         report(end+1) = "    " + nsig + " of " + numel(chanlist_s1) + " S1 channels with a significant cluster";
+
+        %the V1-probe maps: each V1 channel vs the main S1 shank
+        report(end+1) = "    V1 probe, each V1 channel vs the main S1 shank (mean of CH" + strjoin(string(s1_shankch'),", CH") + "), cluster threshold " + sprintf('%.1f',shape_clustthr_v1(con)) + ":";
+        nsig = 0;
+        for c = 1:nch
+            sigc = shape_sig_v1{con}(:,:,c);
+            if any(sigc,'all')
+                nsig = nsig + 1;
+                rr = r_shape_v1{con}(:,:,c);
+                rr(sigc == false) = NaN; %only the significant pixels
+                [~,ip] = max(abs(rr(:))); %strongest one (max skips NaN)
+                [fi,ti] = ind2sub(size(rr), ip);
+                report(end+1) = "      CH" + chanlist(c) + ": significant, peak r " + sprintf('%.2f',rr(ip)) + " at " + sprintf('%.0f',tf_f(fi)) + " Hz, " + tf_t(ti) + " ms";
+            end
+        end
+        report(end+1) = "      " + nsig + " of " + nrch + " responsive V1 channels with a significant cluster";
     end
 end
 
@@ -2476,10 +2844,10 @@ end
 %every Setup value (the ones that exist) in one struct
 setnames = {'animal','region','grpnames','condis_grp','tr_conditional_use','spike_dir','lfp_dir','probeinfo_dir', ...
     'stim_onset_30k','stim_onset_lfp','fs_mua','win_ms','base_ms','bin_ms','smooth_ms', ...
-    'resp_ms','pre_resp_ms','pre_end_ms','fake_ms','tmpl_trim','tmpl_iter','chan_z_min','resp_null_prct','keep_qc','qc_plotsave', ...
+    'resp_ms','pre_resp_ms','pre_end_ms','fake_ms','tmpl_trim','tmpl_iter','chan_z_min','resp_null_prct','resp_method','base_use_ms','peak_win_ms','resp_z','resp_shank_nch','resp_min_ms','resp_together_ms','keep_qc','qc_plotsave', ...
     'psd_ms','psd_nw','psd_hz','line_out','line_hz', ...
     'do_align','align_ms','max_lag_ms','n_perm', ...
-    'do_S1','s1_region','lfp_load_ms','s1_shank_label','s1_ref_row','tf_win_ms','tf_step_ms','tf_ms','tf_nw', ...
+    'do_S1','s1_region','lfp_load_ms','s1_shank_label','s1_ref_row','s1_shank_nch','tf_win_ms','tf_step_ms','tf_ms','tf_nw', ...
     'shape_block_ms','n_shuf','shuf_p','clust_p','load_ms'};
 settings = struct();
 for i = 1:numel(setnames)
@@ -2498,11 +2866,12 @@ savelist = {'settings','report','run_notes','condis','condgrp','filesused','ntri
     'align_methods','align_use_ms','lags','lags_null','lagpk','lagsd','lagsd_null', ...
     'al_names','tc_trial','tc_cond','tc_cond_null','tc_p', ...
     'prb_s1','pmap_s1','chanlist_s1','s1_refch','tf_t','tf_f','v1tr','ntr_s1', ...
-    'r_shape_ch','shape_zpix','shape_ppix','shape_sig','shape_clustthr'};
+    'r_shape_ch','shape_zpix','shape_ppix','shape_sig','shape_clustthr', ...
+    's1_shankch','r_shape_v1','shape_zpix_v1','shape_ppix_v1','shape_sig_v1','shape_clustthr_v1'};
 %Quality Control details: how the response trials and responsive channels were found (keep_qc)
 if keep_qc == 1
     savelist = [savelist, {'chan_medz','chan_medz_cond','respchans_cond','respscore','respnull','respthr','resp_tmpl','tmpl_rounds', ...
-        'align_ref','align_ref_r'}];
+        'align_ref','align_ref_r','chpeakz','resp_shankch'}];
 end
 haveit = false(1,numel(savelist));
 for i = 1:numel(savelist)
