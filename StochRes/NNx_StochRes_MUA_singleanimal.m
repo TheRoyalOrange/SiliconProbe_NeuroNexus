@@ -80,6 +80,10 @@
 %   respscore >= resp_z; respthr = resp_z; respnull = the same score in the baseline stretch (QC only);
 %   chpeakz {con} (trials x channels) each channel's peak robust z, resp_shankch (shanks x resp_shank_nch)
 %   raw IDs used, NaN = shank skipped; tmpl_rounds = 0. The descriptions below are for resp_method = 1)
+%   (spike-count rule, both methods: resp = detected AND respcount >= resp_mincount = resp_min_spk x number of
+%   responsive channels; respcount {con} (trials x 1) raw spikes in resp_count_ms summed over respchans;
+%   resp_detect {con} = the calls before the rule; resp_lowcount (1 x conditions) detected trials dropped.
+%   Saved with keep_qc = 1)
 %   chan_medz_cond (single, channels x conditions) - each channel's median trial z: template-match score
 %     (sum(trial .* template)/sum(template.^2) in resp_ms, trial minus its pre-stim median, template = trimmed
 %     leave-one-out mean of the condition's other (response) trials) vs that score at the fake no-stim times
@@ -158,7 +162,7 @@
 %THERE ARE VARIABLES IN THIS SECTION THAT YOU MUST MODIFY
 
 %Who is the data? (exactly how the file names start: <animal>-<stim>-spiking_results.mat)
-animal = '20260411-p9';
+animal = '20260509-p10';
 
 %which probe has the MUA you want? (an entry of ProbeInfo.Areas, or a probe number like "1")
 region = "V1";
@@ -168,8 +172,10 @@ region = "V1";
 %MATCHING ORDER, because they are paired by position (1st with 1st: L_4 vs LW_4, 2nd with 2nd: L_8 vs LW_8).
 %Conditions are never pooled within a group; the groups are compared inside each pair
 grpnames = {'L','LW'};
-condis_grp{1} = {'L_4','L_8','L_12','L_15'}; %conditions in group 1
-condis_grp{2} = {'LW_4','LW_8', 'LW_12', 'LW_15'}; %conditions in group 2
+% condis_grp{1} = {'L_4','L_8','L_12','L_15'}; %conditions in group 1
+% condis_grp{2} = {'LW_4','LW_8', 'LW_12', 'LW_15'}; %conditions in group 2
+condis_grp{1} = {'L_8','L_8_TTX'}; %conditions in group 1
+condis_grp{2} = {'LW_8', 'LW_8_TTX'}; %conditions in group 2
 
 %leave out trials flagged under these conditional trial set names? (made with NNx_TrialRemove_Conditional.m,
 %e.g. {"whisker_twitch_artifact"}). {} = no, only tr_remove
@@ -230,6 +236,11 @@ resp_shank_nch = 3; %response = the first this many KEPT channels (from the top)
 resp_min_ms = 150; %ms, each of those channels has to STAY >= resp_z for at least this long (no single blips) (method 2).
 %(keep it LONGER than peak_win_ms: the averaging window already stretches a brief blip to ~peak_win_ms; 50 ms let blips through in a test)
 resp_together_ms = 150; %ms, and they all have to do it within this stretch of each other (method 2)
+
+%enough spikes for the later analyses? (applied to the response trials after either method)
+resp_count_ms = [350 3000]; %ms, window the spikes are counted in (= the spectra / alignment stretch)
+resp_min_spk = 10; %spikes per responsive channel (on average, summed over the responsive channels) a response trial needs there; 0 = no rule
+%(10 per channel in 2.65 s ~ 3.8 spikes/s: ~2 spikes per 500 ms S1 window, enough that trial correlations and lags aren't chance)
 
 %%%Spectrum details%%%
 %psd_seg_ms = 1000; %commented out: Welch dropped, only ~4 segments per trial in psd_ms. Multitaper instead
@@ -852,6 +863,23 @@ end
 clear allrise allfake zfake sc
 %}
 
+%enough spikes for the later analyses? A detected response trial is only kept when its raw spike count in
+%resp_count_ms, summed over the responsive channels (the ones the later sections use), reaches
+%resp_min_spk x the number of responsive channels. Same rule for every condition (no group rate bias)
+cntidx = find(t_bin >= resp_count_ms(1) & t_bin < resp_count_ms(2)); %bins counted
+resp_detect = resp; %{conditions} [trials x 1] what detection called, before the spike-count rule
+respcount = cell(1,ncond); %{conditions} [trials x 1] spikes in resp_count_ms, summed over the responsive channels
+resp_lowcount = zeros(1,ncond); %detected trials dropped per condition for too few spikes
+resp_mincount = resp_min_spk * sum(respchans); %spikes a response trial needs
+for con = 1:ncond
+    respcount{con} = reshape(sum(sum(spkcount{con}(:,cntidx,respchans),2),3), ntrials(con), 1);
+    if resp_min_spk > 0
+        keep = respcount{con} >= resp_mincount;
+        resp_lowcount(con) = sum(resp{con} & keep == false);
+        resp{con} = resp{con} & keep;
+    end
+end
+
 %fraction of response trials per condition
 respfrac = zeros(1,ncond);
 for con = 1:ncond
@@ -996,11 +1024,15 @@ if plot_respcheck == 1
         title(ax1,{[animal ' ' condis{con} ': ' num2str(sum(rtr)) ' of ' num2str(ntrials(con)) ' trials called a response (call made on the responsive channels)'], ...
             ['showing CH' num2str(v1_qcch) ': kept channel ' num2str(v1_ref_row) ' of the peak ' char(v1_shank_label) ' shank (shank ' num2str(pkv) '), ' rtxt ' in this condition']},'Interpreter','none')
 
-        %strip beside it: green = response, grey = no response
+        %strip beside it: green = response, grey = no response, orange = detected but too few spikes (resp_min_spk)
         ax2 = nexttile(tl,12,[2 1]);
-        imagesc(ax2, 1, 1:ntrials(con), double(rtr))
-        colormap(ax2,[0.8 0.8 0.8; 0 0.6 0])
-        clim(ax2,[0 1])
+        lowcnt = resp_detect{con} == true & rtr == false; %detected, dropped by the spike-count rule
+        stripval = double(rtr);
+        stripval(lowcnt) = 2;
+        % imagesc(ax2, 1, 1:ntrials(con), double(rtr)) %commented out: a third colour for the spike-count rule
+        imagesc(ax2, 1, 1:ntrials(con), stripval)
+        colormap(ax2,[0.8 0.8 0.8; 0 0.6 0; 1 0.55 0])
+        clim(ax2,[0 2])
         set(ax2,'XTick',[],'YTick',[])
         title(ax2,'resp?')
 
@@ -1028,6 +1060,8 @@ if plot_respcheck == 1
         for tr = 1:ntrials(con)
             if rtr(tr) == true
                 col = [0 0.6 0]; %response
+            elseif lowcnt(tr) == true
+                col = [1 0.55 0]; %detected, too few spikes
             else
                 col = [.6 .6 .6]; %no response
             end
@@ -1041,7 +1075,7 @@ if plot_respcheck == 1
         set(ax4,'YTick',fliplr(-(0:ntrials(con)-1)*off),'YTickLabel',fliplr(trinfo{con}(:,2)')) %each line labelled with its trial number
         xlabel(ax4,'ms from stim onset')
         ylabel(ax4,'trial (recording order)')
-        title(ax4,['every trial, CH' num2str(v1_qcch) ' (each moved down ' num2str(off,'%.0f') ' spikes/s): green = response, grey = no response'])
+        title(ax4,['every trial, CH' num2str(v1_qcch) ' (each moved down ' num2str(off,'%.0f') ' spikes/s): green = response, orange = detected but < ' num2str(resp_mincount) ' spikes in ' num2str(resp_count_ms(1)) '-' num2str(resp_count_ms(2)) ' ms, grey = no response'])
 
         if qc_plotsave == 1
             fname = sprintf([animal '-' condis{con} '-' ProbeInfo.Areas{prb} '_Probe' '-' 'resptrials_trials']);
@@ -2715,6 +2749,16 @@ if exist('resp','var')
     for con = 1:ncond
         report(end+1) = "  " + condis{con} + ": " + sum(resp{con}) + " of " + ntrials(con) + " (" + sprintf('%.0f',100*respfrac(con)) + "%), threshold " + sprintf('%.2f',respthr(con)) + ...
             ", " + sum(respchans_cond(:,con)) + " responsive channels, " + tmpl_rounds(con) + " template round(s)";
+        %the spike-count rule
+        if exist('respcount','var')
+            dcnt = respcount{con}(resp_detect{con}); %counts of the detected trials
+            if isempty(dcnt)
+                cntxt = "no detected trials";
+            else
+                cntxt = "detected trials' count median " + sprintf('%.0f',median(dcnt)) + ", 10th percentile " + sprintf('%.0f',prctile(dcnt,10));
+            end
+            report(end+1) = "    detected " + sum(resp_detect{con}) + ", dropped " + resp_lowcount(con) + " for < " + resp_mincount + " spikes (" + resp_min_spk + "/channel x " + sum(respchans) + " responsive channels) in " + resp_count_ms(1) + "-" + resp_count_ms(2) + " ms; " + cntxt;
+        end
     end
     % for g = 1:numel(condis_grp) %commented out: pooled each group's conditions; now compared per pair
     %     report(end+1) = "  group " + grpnames{g} + ": " + sprintf('%.0f',100*respfrac_grp(g)) + "%";
@@ -2844,7 +2888,7 @@ end
 %every Setup value (the ones that exist) in one struct
 setnames = {'animal','region','grpnames','condis_grp','tr_conditional_use','spike_dir','lfp_dir','probeinfo_dir', ...
     'stim_onset_30k','stim_onset_lfp','fs_mua','win_ms','base_ms','bin_ms','smooth_ms', ...
-    'resp_ms','pre_resp_ms','pre_end_ms','fake_ms','tmpl_trim','tmpl_iter','chan_z_min','resp_null_prct','resp_method','base_use_ms','peak_win_ms','resp_z','resp_shank_nch','resp_min_ms','resp_together_ms','keep_qc','qc_plotsave', ...
+    'resp_ms','pre_resp_ms','pre_end_ms','fake_ms','tmpl_trim','tmpl_iter','chan_z_min','resp_null_prct','resp_method','base_use_ms','peak_win_ms','resp_z','resp_shank_nch','resp_min_ms','resp_together_ms','resp_count_ms','resp_min_spk','keep_qc','qc_plotsave', ...
     'psd_ms','psd_nw','psd_hz','line_out','line_hz', ...
     'do_align','align_ms','max_lag_ms','n_perm', ...
     'do_S1','s1_region','lfp_load_ms','s1_shank_label','s1_ref_row','s1_shank_nch','tf_win_ms','tf_step_ms','tf_ms','tf_nw', ...
@@ -2871,7 +2915,7 @@ savelist = {'settings','report','run_notes','condis','condgrp','filesused','ntri
 %Quality Control details: how the response trials and responsive channels were found (keep_qc)
 if keep_qc == 1
     savelist = [savelist, {'chan_medz','chan_medz_cond','respchans_cond','respscore','respnull','respthr','resp_tmpl','tmpl_rounds', ...
-        'align_ref','align_ref_r','chpeakz','resp_shankch'}];
+        'align_ref','align_ref_r','chpeakz','resp_shankch','resp_detect','respcount','resp_lowcount','resp_mincount'}];
 end
 haveit = false(1,numel(savelist));
 for i = 1:numel(savelist)
