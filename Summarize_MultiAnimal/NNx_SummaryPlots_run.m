@@ -30,6 +30,7 @@
 %   summaryTable (table) - the loaded / stacked summary table
 %   figs_labels (struct) - NNx_plotProbeLabels figures, one field per mouse
 %   figs_LWint (figure handles) - NNx_plotLWIntensityCompare
+%   figs_paired (figure handles) - NNx_plotPairedCond_intensitycompare
 %   figs_LWint_multi, data_LWint_multi - NNx_plotLWIntensityCompare_multianimal
 %   figs_LWTTX, data_LWTTX - NNx_plotLWTTXCompare_multianimal
 %   figs_shankprof, data_shankprof - NNx_plotRankedShankProfile
@@ -110,7 +111,7 @@ disp(['Setup: summary table loaded, ' num2str(height(summaryTable)) ' rows from 
 %doesn't need the summary table, just ProbeInfo
 
 %Who is the data?
-mice = {"20260423-p12"};
+mice = {"20261011-p11"};
 
 %Which brain area per mouse? (picks the probe: must match one entry of that mouse's ProbeInfo.Areas)
 region = {"V1"};
@@ -134,7 +135,7 @@ clear prbinfo
 %one figure per feature: activity labels on top, then L, LW and LW - L channel maps for 4, 8, 12, 15 uW
 
 %Who is the data? (as in the Animal_Name column)
-animal = "20260423-p12";
+animal = "20261011-p11";
 
 %Which region? (as in the Region column, or a probe number)
 region_LWint = []; %int stands for intensities
@@ -161,6 +162,56 @@ save_png_LWint = 0;
 
 figs_LWint = NNx_plotLWIntensityCompare(animal, summaryTable, region_LWint, features_LWint, ...
     stimlabels_LWint, do_stats_LWint, save_png_LWint);
+
+
+
+%% Data Visualization: Paired conditions, you pick the rows, one animal (NNx_plotPairedCond_intensitycompare)
+%same figure as the L vs LW section above, but each row is a condition pair you choose:
+%light intensities, light positions, whisker intensities, whatever is in the Condition_Name column
+%one figure per feature: activity labels on top, then condition A, condition B and B - A channel maps per row
+
+%Who is the data? (as in the Animal_Name column)
+animal_paired = "20261011-p11";
+
+%Which region? (as in the Region column, or a probe number)
+region_paired = [];
+    % [] = pick in a dialog
+
+%Which condition pairs? one row of the figure per pair, top to bottom: [column 1 (A), column 2 (B)]
+condpairs_paired = ["L_8"  "LW_8";
+                    "L_8" "L_8_far";
+                    "LW_8" "LW_8_far";
+                    "L_8_far" "LW_8_far"];
+    % [] = pick in two dialogs (column 1 conditions, then the same number of column 2 conditions, paired in list order)
+    % e.g. ["L_4" "LW_4"; "L_8" "LW_8"; "L_12" "LW_12"; "L_15" "LW_15"]  (light intensities)
+    % names must match Condition_Name exactly, or that tile is a black "No Data"
+
+%Which features? (measure columns, one figure each)
+features_paired = [];
+    % [] = pick in a dialog
+    % e.g. ["All_MUAAUC","P1_LFPmin"]
+
+%Which two stimulus labels in the top row (columns 2 and 3)?
+stimlabels_paired = [];
+    % [] = pick in two dialogs (light only and whisker only pre-selected)
+
+%Star channels where B and A differ? (Wilcoxon rank-sum, FDR)
+do_stats_paired = 1;
+    % 0 = no stats
+    % 1 = test and star
+
+%Save the figures as PNGs? (asks about the folder if it already exists)
+save_png_paired = 0;
+    % 0 = just show them
+    % 1 = also save
+
+%What do you call this comparison? (goes in the titles and the save folder / file names)
+comparename_paired = [];
+    % [] = built from the condition names (L_* vs LW_* -> "LvsLW"), or "PairedCond"
+    % e.g. "LvsLW_position"
+
+figs_paired = NNx_plotPairedCond_intensitycompare(animal_paired, summaryTable, region_paired, condpairs_paired, ...
+    features_paired, stimlabels_paired, do_stats_paired, save_png_paired, comparename_paired);
 
 
 
