@@ -17,8 +17,11 @@
 %     5) (do_S1 = 1) V1 spike-count spectra next to S1 LFP spectra (spec_ms, unshifted trials), coup_groups
 %        conditions, as a grid of responsive V1 channel x every S1 channel small plots in the frequency domain
 %     6) (do_S1 = 1) V1 spikes x S1 LFP coupling for every responsive V1 channel x S1 channel pair, in the bands
-%        (alpha 8-15 Hz, low gamma 25-45 Hz), unshifted trials (the alignment is only for steps 3-4): spike-field coherence, amplitude-envelope correlation and
-%        (do_mi = 1) Gaussian-copula mutual information, each against trial shuffles with max-over-pairs correction
+%        (alpha 8-15 Hz, low gamma 25-45 Hz), unshifted trials (the alignment is only for steps 3-4): spike-field coherence and
+%        amplitude-envelope correlation, each against trial shuffles with max-over-pairs correction
+%        (do_gc = 1, same pass) spectral Granger causality S1 LFP <-> V1 spiking, both directions and net, per pair
+%        (VAR model on gc_bin_ms bins, condition-mean time courses out), band means against the same trial shuffles
+%        With both groups in coup_groups: LW vs L for every channel pair (L / LW labels shuffled among the pair's trials)
 %     7) post-run report (printed once at the end and saved) and the results saved with all settings
 %   (tried earlier and dropped: the sliding-window
 %   time-frequency shape maps, the probe-layout spectra (psd_tot) and the alignment-method picture)
@@ -121,19 +124,38 @@
 %   s1bg, s1osc (cell, 1 x conditions) - (double, freqs x S1 channels) dB, that background and s1psd above it (0 = no rhythm)
 %   rch (double, responsive V1 channels x 1) - places in chanlist of the responsive V1 channels (rows of the pair
 %     results, in chanlist order)
-%   coh, envr, mi (cell, 1 x conditions) - (double, responsive V1 ch x S1 ch x bands) spike-field coherence
-%     (band mean), envelope correlation (Fisher-z mean over trials, back to r), mutual information (bits,
-%     do_mi = 1); empty for conditions not in coupcons
-%   coh_z, envr_z, mi_z (cell, 1 x conditions) - (double, same size) z against the n_shuf trial shuffles
-%   coh_sig, envr_sig, mi_sig (cell, 1 x conditions) - (logical, same size) beats the (1 - pair_p) percentile of
-%     the biggest shuffle z over all pairs (coherence, MI: one-sided; envelope r: two-sided, |z|)
-%   coup_thr (double, 3 measures x bands x conditions) - those thresholds (coh; envr; mi)
+%   coh, envr (cell, 1 x conditions) - (double, responsive V1 ch x S1 ch x bands) spike-field coherence
+%     (band mean), envelope correlation (Fisher-z mean over trials, back to r); empty for conditions not in coupcons
+%   coh_z, envr_z (cell, 1 x conditions) - (double, same size) z against the n_shuf trial shuffles
+%   coh_sig, envr_sig (cell, 1 x conditions) - (logical, same size) beats the (1 - pair_p) percentile of
+%     the biggest shuffle z over all pairs (coherence: one-sided; envelope r: two-sided, |z|)
+%   coup_thr (double, 2 measures x bands x conditions) - those thresholds (coh; envr)
+%   coh_ex, envr_ex (cell, 1 x conditions) - (double, V1 ch x S1 ch x bands) excess over the pair's own shuffle mean
+%     (real - mean; envelope r on the Fisher-z scale): free of the trial-count bias, for comparing conditions
+%   (do_S1 = 1, do_gc = 1) gc_f (double, 1 x freqs) - Hz of the Granger spectra (0 to 1000/gc_bin_ms/2, 1 Hz steps)
+%   gc_s1v1, gc_v1s1 (cell, 1 x conditions) - (double, responsive V1 ch x S1 ch x freqs) spectral Granger causality
+%     S1 -> V1 and V1 -> S1 (Geweke, log ratio, 0 = none) from a VAR(gc_order) on gc_bin_ms bins of the response trials in
+%     spec_use_ms, each channel's condition-mean time course removed
+%   gc_band_s1v1, gc_band_v1s1, gc_band_net (cell, 1 x conditions) - (double, V1 ch x S1 ch x bands) band means and
+%     net = S1->V1 minus V1->S1
+%   gc_z_s1v1, gc_z_v1s1, gc_z_net / gc_sig_s1v1, gc_sig_v1s1, gc_sig_net (cell, 1 x conditions) - z against the
+%     n_shuf trial shuffles / significant (max-over-pairs, directions one-sided, net two-sided)
+%   gc_thr (double, 3 x bands x conditions) - those thresholds (S1->V1; V1->S1; net)
+%   gc_shufmean_s1v1, gc_shufmean_v1s1 (cell, 1 x conditions) - (double, freqs x 1) mean shuffle spectrum over all
+%     pairs (chance level)
+%   gc_ex_s1v1, gc_ex_v1s1, gc_ex_net (cell, 1 x conditions) - (double, V1 ch x S1 ch x bands) Granger band values
+%     minus their shuffle mean
+%   (both groups in coup_groups) lwl_meas (cell, 1 x measures) - coherence, envelope r, Granger S1->V1, V1->S1, net
+%   lwl_diff, lwl_z (cell, 1 x pairs){1 x measures} - (double, V1 ch x S1 ch x bands) group 2 - group 1 of each
+%     measure, and its z against n_shuf shuffles of the L / LW labels among the pair's trials (group sizes kept)
+%   lwl_sig (cell, 1 x pairs){1 x measures} - (logical, same size) |z| beyond the max-over-pairs threshold
+%   lwl_thr (double, pairs x measures x bands) - those thresholds; empty / NaN for pairs not both analysed
 %   run_notes (string) - things worth knowing, for the report
 %
 % Dependencies: NNx_BaseAnalysis*.m (spiking + LFP files, ProbeInfo); NNx_TrialRemove_Conditional(_callable).m
 %   (tr_remove mask format, optional conditional sets); NNx_editProbeInfo_ChLabel_StimData.m (ShankLabels.Light,
 %   only for plot_respcheck); uipickfiles.m; Signal Processing Toolbox (xcorr, dpss, butter, zp2sos,
-%   filtfilt, hilbert); Statistics Toolbox (corr, prctile, signrank, tiedrank, norminv, mad);
+%   filtfilt, hilbert); Statistics Toolbox (corr, prctile, signrank, mad);
 %   Parallel Computing Toolbox optional (parfor); MATLAB R2022a+ (clim, tiledlayout 'tight', boxchart, pagemtimes)
 %
 
@@ -224,9 +246,9 @@ do_S1 = 1;
 s1_region = "S1"; %ProbeInfo.Areas name of the S1 probe
 lfp_load_ms = [-5000 5000]; %ms, S1 LFP stretch kept (has to hold spec_ms with room for the filters)
 %which group's conditions get the S1 comparisons?
-coup_groups = 2;
+coup_groups = [1 2];
     % 2 = group 2 only (e.g. LW)
-    % [1 2] = both groups (group 1 as the control: LW - L differences per pair get their own panels)
+    % [1 2] = both groups (group 1 as the control: LW vs L is tested per pair, and gets difference panels)
 
 %%%Spectrum details%%%
 spec_ms = [75 3000]; %ms post stimulus, window for the V1 / S1 spectra and the pair coupling
@@ -242,12 +264,17 @@ line_hz = [48 52]; %Hz, 50 Hz mains band (only used when line_out = 1). One row 
 bands = [8 15; 25 45]; %Hz, one row per band
 bandnames = {'alpha','lowgamma'}; %a name per band (figure titles, file names)
 env_step_ms = 25; %ms, the band envelopes / analytic signals are taken every this many ms (neighbouring samples less alike)
-%mutual information as well? (Gaussian-copula MI of the band signals, phase and amplitude together; slower)
-do_mi = 0;
-    % 0 = no, coherence + envelope correlation only
-    % 1 = yes, add MI
 n_shuf = 500; %trial shuffles for the pair null (V1 of one trial with S1 of another)
 pair_p = 0.05; %a pair counts when it beats the (1 - pair_p) percentile of the biggest chance z over all pairs
+
+%%%Granger details%%%
+%which way does it go? spectral Granger causality between the S1 LFP and V1 spiking, BOTH directions, every channel
+%pair: does S1's past help predict V1's next few ms (beyond V1's own past), and at which frequencies?
+do_gc = 1;
+    % 0 = no
+    % 1 = yes (worked out in the same pass as the pair coupling, uses its trial shuffles)
+gc_bin_ms = 5; %ms, both signals binned to this first (5 ms -> 200 Hz: frequencies up to 100 Hz)
+gc_order = 20; %how many bins of history the model looks back (20 x 5 ms = 100 ms)
 
 %%%Quality Control%%%
 %want to dig into how the early steps handled the data? Everything for that is switched on/off here
@@ -280,6 +307,8 @@ plot_corr = 1;
 plot_psdgrid = 1;
 %pair coupling heatmaps? (do_S1 = 1)
 plot_coup = 1;
+%Granger heatmaps and spectra? (do_S1 = 1, do_gc = 1)
+plot_gc = 1;
 %save the figures? (as PNGs; a figure with a slider gets one PNG per panel)
 plotsave = 1;
 png_res = 150; %dpi of the saved PNGs (a full-screen figure -> ~2900 x 1600 px)
@@ -2248,13 +2277,16 @@ end
 %  2) envelope correlation: band-pass both (zero-phase Butterworth), Hilbert amplitude every env_step_ms, per trial
 %     r of the two envelopes, Fisher-z mean over trials. Power coupling: does V1 rhythm grow when S1 power grows?
 %     (a trial without V1 spikes in the window is left out for that V1 channel)
-%  3) (do_mi = 1) Gaussian-copula mutual information (Ince et al. 2017) between the two band signals, each as
-%     [real imaginary] (phase and amplitude together, catches non-linear coupling too), samples pooled over time and
-%     trials, bias-corrected, bits
 %Null: n_shuf trial shuffles (V1 of trial i with S1 of another trial, the same shuffles for every pair and measure).
 %Each pair gets a z against its shuffles. Correction over the many pairs: a pair counts when its z beats the
-%(1 - pair_p) percentile of the BIGGEST shuffle z over all pairs (per condition, band and measure). Coherence and MI
-%are one-sided (more than chance); envelope r is two-sided (|z|).
+%(1 - pair_p) percentile of the BIGGEST shuffle z over all pairs (per condition, band and measure). Coherence
+%is one-sided (more than chance); envelope r is two-sided (|z|).
+%  3) (do_gc = 1) spectral Granger causality, both directions (S1 -> V1 and V1 -> S1, net = their difference): does one
+%     probe's past help predict the other's next bins beyond its own past, and at which frequencies? Both signals binned
+%     to gc_bin_ms (no band-pass, so no time smearing), each channel's condition-mean time course taken out (the shared
+%     stimulus response can't be transfer), a VAR model of order gc_order fitted from the trial-pooled (cross-)covariances
+%     (Whittle's recursion), Geweke's spectral Granger from it, then the band means. A pairing is just a different mean of a
+%     V1 trial x S1 trial covariance table, so every shuffle costs one more (cheap) model fit
 %Speed: every V1 trial x S1 trial pairing is worked out once per pair (a table), so a shuffle just picks other
 %entries of that table
 if do_S1 == 1
@@ -2284,14 +2316,53 @@ if do_S1 == 1
 
     coh = cell(1,ncond); %{conditions} [responsive V1 ch x S1 ch x bands]
     envr = cell(1,ncond);
-    mi = cell(1,ncond);
     coh_z = cell(1,ncond);
     envr_z = cell(1,ncond);
-    mi_z = cell(1,ncond);
     coh_sig = cell(1,ncond);
     envr_sig = cell(1,ncond);
-    mi_sig = cell(1,ncond);
-    coup_thr = nan(3,nband,ncond); %max-statistic thresholds: coh; envr; mi
+    trz_env = cell(1,ncond); %{conditions} per-trial pieces kept for the LW vs L test (see there)
+    trc_gc = cell(1,ncond);
+    tra_v = cell(1,ncond);
+    tra_s = cell(1,ncond);
+    coh_ex = cell(1,ncond); %{conditions} [V1 ch x S1 ch x bands] excess over the pair's own shuffle mean (real - mean)
+    envr_ex = cell(1,ncond); %(on the Fisher-z scale, where its shuffles are)
+    coup_thr = nan(2,nband,ncond); %max-statistic thresholds: coh; envr
+
+    %(do_gc) Granger: frequency grid, band masks and the 2 x 2 matrix inverse for stacks of matrices, made once.
+    %(made even with do_gc = 0, so the shared loop below always finds them)
+    gc_win = numel(sidx); %ms (1 ms bins) in the window
+    if do_gc == 1 && gc_order*gc_bin_ms >= gc_win/2
+        error(['gc_order x gc_bin_ms (' num2str(gc_order*gc_bin_ms) ' ms) has to be well under half the spectrum window (' num2str(gc_win) ' ms)'])
+    end
+    gbin = round(gc_bin_ms/bin_ms); %1 ms bins per Granger bin
+    ngb = floor(gc_win/gbin); %Granger bins in the window (a leftover part bin at the end is dropped)
+    fs_gc = 1000/gc_bin_ms; %Hz
+    gc_f = 0:1:floor(fs_gc/2); % [1 x freqs] Hz, 1 Hz steps up to Nyquist
+    ngf = numel(gc_f);
+    nlag = 2*gc_order + 1; %lags -p..p of the cross-covariance tables
+    gc_E = exp(-1i*2*pi*gc_f'*(1:gc_order)/fs_gc); % [freqs x lags] e^{-i 2 pi f k / fs}, for A(f) = I - sum_k A_k e^{-i 2 pi f k / fs}
+    gc_fb = cell(1,nband); %{bands} which gc_f are in each band
+    for b = 1:nband
+        gc_fb{b} = gc_f >= bands(b,1) & gc_f <= bands(b,2);
+    end
+    inv2 = @(M) cat(1, cat(2, M(2,2,:,:), -M(1,2,:,:)), cat(2, -M(2,1,:,:), M(1,1,:,:))) ./ (M(1,1,:,:).*M(2,2,:,:) - M(1,2,:,:).*M(2,1,:,:)); %inverse of every 2 x 2 page
+    gc_s1v1 = cell(1,ncond); %{conditions} [responsive V1 ch x S1 ch x freqs] GC spectrum S1 -> V1
+    gc_v1s1 = cell(1,ncond); %{conditions} [responsive V1 ch x S1 ch x freqs] GC spectrum V1 -> S1
+    gc_band_s1v1 = cell(1,ncond); %{conditions} [V1 ch x S1 ch x bands] band means
+    gc_band_v1s1 = cell(1,ncond);
+    gc_band_net = cell(1,ncond); %S1 -> V1 minus V1 -> S1
+    gc_z_s1v1 = cell(1,ncond); %z against the trial shuffles
+    gc_z_v1s1 = cell(1,ncond);
+    gc_z_net = cell(1,ncond);
+    gc_sig_s1v1 = cell(1,ncond); %significant after the max-over-pairs correction
+    gc_sig_v1s1 = cell(1,ncond);
+    gc_sig_net = cell(1,ncond);
+    gc_thr = nan(3,nband,ncond); %max-statistic thresholds: S1->V1; V1->S1; net
+    gc_shufmean_s1v1 = cell(1,ncond); %{conditions} [freqs x 1] mean over pairs and shuffles (the chance level)
+    gc_shufmean_v1s1 = cell(1,ncond);
+    gc_ex_s1v1 = cell(1,ncond); %{conditions} [V1 ch x S1 ch x bands] Granger band value minus its shuffle mean
+    gc_ex_v1s1 = cell(1,ncond);
+    gc_ex_net = cell(1,ncond);
 
     for con = coupcons
         rtrs = find(resp{con} == true); %response trials (lfp_s1 holds these, same order)
@@ -2357,48 +2428,60 @@ if do_S1 == 1
             end
             Vn{b} = E;
         end
-        %(do_mi) each variable to a standard normal by its rank (the copula), over all samples of all trials together
-        Vc = cell(1,nband); %{bands} [envelope samples x trials x 2 (real, imaginary) x responsive V1 channels]
-        Sc = cell(1,nband); %{bands} [envelope samples x trials x 2 x S1 channels]
-        if do_mi == 1
-            for b = 1:nband
-                Vc{b} = zeros(nE,nresp,2,nrch);
-                Sc{b} = zeros(nE,nresp,2,nch_s1);
-                for iv = 1:nrch
-                    parts = {real(Av{b}(:,:,iv)), imag(Av{b}(:,:,iv))};
-                    for d = 1:2
-                        x = parts{d}(:);
-                        Vc{b}(:,:,d,iv) = reshape(norminv(tiedrank(x) / (numel(x) + 1)), nE, nresp);
-                    end
-                end
-                for c1 = 1:nch_s1
-                    parts = {real(As{b}(:,:,c1)), imag(As{b}(:,:,c1))};
-                    for d = 1:2
-                        x = parts{d}(:);
-                        Sc{b}(:,:,d,c1) = reshape(norminv(tiedrank(x) / (numel(x) + 1)), nE, nresp);
-                    end
-                end
-            end
-        end
         Yvc = Yv{con}; %{bands} tapered V1 band spectra (from the spectrum section)
         Ysc = Ys{con};
+
+        %(do_gc) Granger signals: both probes binned to gc_bin_ms in the same window, then each channel's condition-mean
+        %time course (the stimulus-locked part every trial shares, which can't be transfer) taken out, so what's left is the
+        %trial-to-trial fluctuation the model needs. V1 side made once here (and its autocovariances), S1 side per worker
+        Vg = zeros(ngb,nresp,nrch); % [bins x trials x responsive V1 channels] spike counts per bin, condition mean out
+        Sg = zeros(ngb,nresp,nch_s1); % [bins x trials x S1 channels] mean LFP per bin, condition mean out
+        Gvv = zeros(gc_order+1,nrch); % [lags 0..p x V1 channels] V1 autocovariance, pooled over trials
+        tav = zeros(gc_order+1,nresp,nrch); % [lags 0..p x trials x V1 channels] each trial's (for the LW vs L test)
+        if do_gc == 1
+            gidx = sidx(1:ngb*gbin); %1 ms bins used (whole Granger bins)
+            for iv = 1:nrch
+                X = double(reshape(spkcount{con}(rtrs,gidx,rch(iv)), nresp, ngb*gbin))'; % [1 ms bins x trials]
+                X = reshape(sum(reshape(X, gbin, ngb, nresp),1), ngb, nresp); %spikes per Granger bin
+                Vg(:,:,iv) = X - mean(X,2);
+                for k = 0:gc_order %biased (divided by all the bins): keeps the fitted model stable
+                    % Gvv(k+1,iv) = sum(Vg(1+k:ngb,:,iv) .* Vg(1:ngb-k,:,iv),'all') / (ngb*nresp); %commented out: per trial now (the LW vs L test needs it), pooled = their mean
+                    tav(k+1,:,iv) = sum(Vg(1+k:ngb,:,iv) .* Vg(1:ngb-k,:,iv),1) / ngb;
+                    Gvv(k+1,iv) = mean(tav(k+1,:,iv));
+                end
+            end
+            gidx = lidx(1:ngb*gbin); %the same ms of the LFP
+            for c1 = 1:nch_s1
+                X = double(reshape(lfp_s1{con}(:,gidx,c1), nresp, ngb*gbin))';
+                X = reshape(mean(reshape(X, gbin, ngb, nresp),1), ngb, nresp); %mean LFP per Granger bin
+                Sg(:,:,c1) = X - mean(X,2);
+            end
+        end
+        r_gc1 = nan(nrch,nch_s1,ngf); %real GC spectra, S1 -> V1
+        r_gc2 = nan(nrch,nch_s1,ngf); %V1 -> S1
+        r_gcb = nan(nrch,nch_s1,nband,3); %real band values: S1->V1, V1->S1, net
+        s_gcb = nan(nrch,nch_s1,nband,3,n_shuf,'single'); %shuffle band values
+        m_gc1 = nan(nrch,nch_s1,ngf); %mean shuffle spectrum per pair, S1 -> V1
+        m_gc2 = nan(nrch,nch_s1,ngf);
+        trz = nan(nrch,nch_s1,nband,nresp); %each trial's envelope Fisher z per pair (for the LW vs L test)
+        trc = zeros(nlag,nresp,nrch,nch_s1); %each trial's V1 x S1 cross-covariance per pair (Granger, LW vs L test)
+        tas = zeros(gc_order+1,nresp,nch_s1); %each trial's S1 autocovariance
 
         %per S1 channel (one per worker): real value + every shuffle's value of every pair and band
         r_coh = nan(nrch,nch_s1,nband); %real values
         r_env = nan(nrch,nch_s1,nband);
-        r_mi = nan(nrch,nch_s1,nband);
         s_coh = nan(nrch,nch_s1,nband,n_shuf,'single'); %shuffle values (single: ~n_shuf x pairs x bands x 4 bytes)
         s_env = nan(nrch,nch_s1,nband,n_shuf,'single');
-        s_mi = nan(nrch,nch_s1,nband,n_shuf,'single');
         cname = condis{con}; %for the progress lines
         % for c1 = 1:nch_s1 %commented out: on nw workers now (nw = 0 runs it as this loop)
         parfor (c1 = 1:nch_s1, nw) %S1 channels don't depend on each other (each worker gets the V1 tables, a few MB)
             rc = nan(nrch,nband); %this S1 channel's results first, into the big arrays in one go at the end (parfor needs it that way)
             re = nan(nrch,nband);
-            rm = nan(nrch,nband);
+            tz = nan(nrch,nband,nresp); %this S1 channel's per-trial pieces
+            tc = zeros(nlag,nresp,nrch);
+            ta = zeros(gc_order+1,nresp);
             sc = nan(nrch,nband,n_shuf,'single');
             se = nan(nrch,nband,n_shuf,'single');
-            sm = nan(nrch,nband,n_shuf,'single');
             for b = 1:nband
                 B = Ysc{b}(:,:,:,c1); % [band freqs x tapers x trials] S1 tapered spectra
                 nfb = size(B,1);
@@ -2421,85 +2504,158 @@ if do_S1 == 1
                     R = Vn{b}(:,:,iv)' * Se; % [trials x trials] (NaN rows = V1 trials without spikes)
                     R = max(min(R, 0.9999), -0.9999); %keep atanh finite
                     Z = atanh(R);
+                    tz(iv,b,:) = reshape(Z(diagidx), 1, 1, nresp); %each trial with its own S1
                     re(iv,b) = tanh(mean(Z(diagidx),'omitnan'));
                     se(iv,b,:) = single(mean(Z(shufidx),2,'omitnan')); %Fisher z means (the real one is compared as z too, below)
+                end
+            end
 
-                    %3) mutual information, Gaussian copula, V1 [re im] vs S1 [re im], V1 trials with spikes only
-                    if do_mi == 1
-                        vi = find(vok(:,iv)); %V1 trials used
-                        nv = numel(vi);
-                        N = nE*nv; %samples
-                        Va = reshape(Vc{b}(:,vi,:,iv), N, 2); % [samples x 2] V1, fixed for every shuffle
-                        Cxx = cov(Va);
-                        mx = mean(Va,1)';
-                        %per-trial pieces of the S1 side and of the cross products, so any pairing is just sums
-                        Sall = Sc{b}(:,:,:,c1); % [envelope samples x trials x 2]
-                        Gs = zeros(2,2,nresp); %each S1 trial's sum of products
-                        ms = zeros(2,nresp); %each S1 trial's sums
-                        for tr = 1:nresp
-                            st = reshape(Sall(:,tr,:), nE, 2);
-                            Gs(:,:,tr) = st'*st;
-                            ms(:,tr) = sum(st,1)';
+            %4) (do_gc) spectral Granger causality, both directions, for this S1 channel with every responsive V1 channel:
+            %the real pairing and every shuffle at once (pages of 2 x 2 matrices)
+            g1 = nan(nrch,ngf); %this S1 channel's real spectra, S1 -> V1
+            g2 = nan(nrch,ngf); %V1 -> S1
+            gb = nan(nrch,nband,3); %real band values: S1->V1, V1->S1, net
+            gsb = nan(nrch,nband,3,n_shuf,'single'); %shuffle band values
+            gm1 = nan(nrch,ngf); %mean shuffle spectrum, S1 -> V1
+            gm2 = nan(nrch,ngf);
+            if do_gc == 1
+                Sx = Sg(:,:,c1); % [bins x trials] this S1 channel
+                Gss = zeros(gc_order+1,1); %its autocovariance, lags 0..p
+                for k = 0:gc_order
+                    % Gss(k+1) = sum(Sx(1+k:ngb,:) .* Sx(1:ngb-k,:),'all') / (ngb*nresp); %commented out: per trial now, pooled = their mean
+                    ta(k+1,:) = sum(Sx(1+k:ngb,:) .* Sx(1:ngb-k,:),1) / ngb;
+                    Gss(k+1) = mean(ta(k+1,:));
+                end
+                %S1 moved by every lag -p..p: Ssh(:,:,k+p+1) = s(t-k), zeros where it runs off
+                Ssh = zeros(ngb,nresp,nlag);
+                for k = -gc_order:gc_order
+                    if k >= 0
+                        Ssh(1+k:ngb,:,k+gc_order+1) = Sx(1:ngb-k,:);
+                    else
+                        Ssh(1:ngb+k,:,k+gc_order+1) = Sx(1-k:ngb,:);
+                    end
+                end
+                nS = n_shuf + 1; %pairings: real (page 1) + every shuffle
+                for iv = 1:nrch
+                    if Gvv(1,iv) <= 0 || Gss(1) <= 0 %silent channel: no model
+                        continue
+                    end
+                    %table of every V1 trial i x S1 trial j cross-covariance E[v(t) s(t-k)], lags -p..p, then each pairing's mean
+                    Tg = reshape(pagemtimes(Vg(:,:,iv)', Ssh), nresp*nresp, nlag) / ngb; % [(trials*trials) x lags]
+                    tc(:,:,iv) = Tg(diagidx,:)'; %each trial with its own S1, [lags x trials]
+                    cvs = [mean(Tg(diagidx,:),1); reshape(mean(reshape(Tg(shufidx(:),:), n_shuf, nresp, nlag),2), n_shuf, nlag)]; % [pairings x lags]
+                    %autocovariance sequence of x = [V1; S1] for every pairing: G(:,:,k+1,s) = E[x(t) x(t-k)'], k = 0..p
+                    G = zeros(2,2,gc_order+1,nS);
+                    G(1,1,:,:) = repmat(reshape(Gvv(:,iv),1,1,[]),1,1,1,nS);
+                    G(2,2,:,:) = repmat(reshape(Gss,1,1,[]),1,1,1,nS);
+                    G(1,2,:,:) = reshape(cvs(:, gc_order+1 + (0:gc_order))', 1,1,gc_order+1,nS); %E[v(t) s(t-k)]
+                    G(2,1,:,:) = reshape(cvs(:, gc_order+1 - (0:gc_order))', 1,1,gc_order+1,nS); %E[s(t) v(t-k)] = E[v(t) s(t+k)]
+                    %VAR(p) model from G: Whittle's recursion (multivariate Levinson), every pairing at once
+                    Af = zeros(2,2,gc_order,nS); %forward coefficients A_1..A_p
+                    Ab = zeros(2,2,gc_order,nS); %backward coefficients
+                    Vf = G(:,:,1,:); %forward error covariance
+                    Vb = G(:,:,1,:); %backward error covariance
+                    for m = 1:gc_order
+                        D = G(:,:,m+1,:);
+                        for j = 1:m-1
+                            D = D - pagemtimes(Af(:,:,j,:), G(:,:,m-j+1,:));
                         end
-                        Txy = zeros(nresp,nresp,2,2); %V1 trial i x S1 trial j sum of products, per dimension pair
-                        for d1 = 1:2
-                            for d2 = 1:2
-                                Txy(:,:,d1,d2) = Vc{b}(:,:,d1,iv)' * Sall(:,:,d2);
-                            end
+                        Am = pagemtimes(D, inv2(Vb));
+                        Bm = pagemtimes(permute(D,[2 1 3 4]), inv2(Vf));
+                        Afo = Af; %last order's coefficients (both updates need the old ones)
+                        Abo = Ab;
+                        for j = 1:m-1
+                            Af(:,:,j,:) = Afo(:,:,j,:) - pagemtimes(Am, Abo(:,:,m-j,:));
+                            Ab(:,:,j,:) = Abo(:,:,j,:) - pagemtimes(Bm, Afo(:,:,m-j,:));
                         end
-                        %bias correction for Gaussian entropies from N samples (Ince et al.): the same for real and shuffles
-                        psiterms = psi((N - (1:4))/2) / 2;
-                        bcorr = psiterms(3) + psiterms(4) - psiterms(1) - psiterms(2);
-                        partners = [vi'; permset(:,vi)]; % [1 + shuffles x V1 trials] S1 partner of each V1 trial (row 1 = real)
-                        mival = zeros(n_shuf+1,1);
-                        for s = 1:n_shuf+1
-                            pj = partners(s,:);
-                            my = sum(ms(:,pj),2) / N;
-                            Cyy = (sum(Gs(:,:,pj),3) - N*(my*my')) / (N-1);
-                            Sxy = zeros(2,2);
-                            for d1 = 1:2
-                                for d2 = 1:2
-                                    tt = Txy(:,:,d1,d2);
-                                    Sxy(d1,d2) = sum(tt(vi' + (pj-1)*nresp));
-                                end
-                            end
-                            Cxy = (Sxy - N*(mx*my')) / (N-1);
-                            Cj = [Cxx Cxy; Cxy' Cyy];
-                            mival(s) = (0.5*log(det(Cxx)*det(Cyy)/det(Cj)) + bcorr) / log(2); %bits
-                        end
-                        rm(iv,b) = mival(1);
-                        sm(iv,b,:) = single(mival(2:end));
+                        Af(:,:,m,:) = Am;
+                        Ab(:,:,m,:) = Bm;
+                        Vf = Vf - pagemtimes(Am, permute(D,[2 1 3 4]));
+                        Vb = Vb - pagemtimes(Bm, D);
+                    end
+                    %spectral GC (Geweke): transfer function H(f) = inv(I - sum_k A_k e^{-i 2 pi f k / fs}), noise covariance Vf
+                    Asum = pagemtimes(reshape(Af,4,gc_order,nS), gc_E.'); % [4 (a11 a21 a12 a22) x freqs x pairings]
+                    a11 = 1 - Asum(1,:,:);
+                    a21 = -Asum(2,:,:);
+                    a12 = -Asum(3,:,:);
+                    a22 = 1 - Asum(4,:,:);
+                    dt = a11.*a22 - a12.*a21;
+                    H11 = a22./dt;
+                    H12 = -a12./dt;
+                    H21 = -a21./dt;
+                    H22 = a11./dt;
+                    S11 = Vf(1,1,1,:); %noise (co)variances, [1 x 1 x 1 x pairings]
+                    S12 = Vf(1,2,1,:);
+                    S22 = Vf(2,2,1,:);
+                    S11 = reshape(S11,1,1,nS);
+                    S12 = reshape(S12,1,1,nS);
+                    S22 = reshape(S22,1,1,nS);
+                    Svv = abs(H11).^2.*S11 + 2*real(H11.*conj(H12)).*S12 + abs(H12).^2.*S22; % [1 x freqs x pairings] V1 spectrum
+                    Sss = abs(H21).^2.*S11 + 2*real(H21.*conj(H22)).*S12 + abs(H22).^2.*S22; %S1 spectrum
+                    f12 = reshape(log(Svv ./ (Svv - (S22 - S12.^2./S11).*abs(H12).^2)), ngf, nS); % [freqs x pairings] S1 -> V1
+                    f21 = reshape(log(Sss ./ (Sss - (S11 - S12.^2./S22).*abs(H21).^2)), ngf, nS); %V1 -> S1
+                    f12 = real(f12); %(tiny imaginary rounding)
+                    f21 = real(f21);
+                    g1(iv,:) = f12(:,1)';
+                    g2(iv,:) = f21(:,1)';
+                    gm1(iv,:) = mean(f12(:,2:end),2)';
+                    gm2(iv,:) = mean(f21(:,2:end),2)';
+                    for b = 1:nband
+                        bv1 = mean(f12(gc_fb{b},:),1); % [1 x pairings]
+                        bv2 = mean(f21(gc_fb{b},:),1);
+                        gb(iv,b,:) = [bv1(1) bv2(1) bv1(1)-bv2(1)];
+                        gsb(iv,b,1,:) = single(bv1(2:end));
+                        gsb(iv,b,2,:) = single(bv2(2:end));
+                        gsb(iv,b,3,:) = single(bv1(2:end) - bv2(2:end));
                     end
                 end
             end
             r_coh(:,c1,:) = reshape(rc, nrch, 1, nband);
             r_env(:,c1,:) = reshape(re, nrch, 1, nband);
-            r_mi(:,c1,:) = reshape(rm, nrch, 1, nband);
             s_coh(:,c1,:,:) = reshape(sc, nrch, 1, nband, n_shuf);
             s_env(:,c1,:,:) = reshape(se, nrch, 1, nband, n_shuf);
-            s_mi(:,c1,:,:) = reshape(sm, nrch, 1, nband, n_shuf);
+            r_gc1(:,c1,:) = reshape(g1, nrch, 1, ngf);
+            r_gc2(:,c1,:) = reshape(g2, nrch, 1, ngf);
+            r_gcb(:,c1,:,:) = reshape(gb, nrch, 1, nband, 3);
+            s_gcb(:,c1,:,:,:) = reshape(gsb, nrch, 1, nband, 3, n_shuf);
+            m_gc1(:,c1,:) = reshape(gm1, nrch, 1, ngf);
+            m_gc2(:,c1,:) = reshape(gm2, nrch, 1, ngf);
+            trz(:,c1,:,:) = reshape(tz, nrch, 1, nband, nresp);
+            trc(:,:,:,c1) = tc;
+            tas(:,:,c1) = ta;
             disp(['S1: ' cname ', coupling shuffles done for S1 CH' num2str(chanlist_s1(c1))])
         end
 
         %z against the shuffles, and the max-over-pairs threshold (per band and measure)
-        %(envelope r is tested on the Fisher-z mean, the same scale as its shuffles)
-        realv = {r_coh, atanh(max(min(r_env,0.9999),-0.9999)), r_mi};
-        shufv = {s_coh, s_env, s_mi};
-        zout = cell(1,3);
-        sigout = cell(1,3);
-        for meas = 1:3
-            if meas == 3 && do_mi == 0
+        %(envelope r is tested on the Fisher-z mean, the same scale as its shuffles; measures 3-5 = Granger S1->V1, V1->S1, net)
+        realv = {r_coh, atanh(max(min(r_env,0.9999),-0.9999)), r_gcb(:,:,:,1), r_gcb(:,:,:,2), r_gcb(:,:,:,3)};
+        shufv = {s_coh, s_env, reshape(s_gcb(:,:,:,1,:),nrch,nch_s1,nband,n_shuf), ...
+            reshape(s_gcb(:,:,:,2,:),nrch,nch_s1,nband,n_shuf), reshape(s_gcb(:,:,:,3,:),nrch,nch_s1,nband,n_shuf)};
+        zout = cell(1,5);
+        sigout = cell(1,5);
+        exout = cell(1,5); %excess over the shuffle mean (for the LW vs L test)
+        for meas = 1:5
+            if meas >= 3 && do_gc == 0
                 continue
             end
             sh = double(shufv{meas}); % [V1 ch x S1 ch x bands x shuffles]
             mu = mean(sh,4,'omitnan');
             sd = std(sh,0,4,'omitnan');
             zp = (realv{meas} - mu) ./ sd; % [V1 ch x S1 ch x bands]
-            zs = (sh - mu) ./ sd; %every shuffle as z
+            % zs = (sh - mu) ./ sd; %commented out: a shuffle inside its own mean / SD shrinks its own z, so the chance maxima came
+            %out too small and too many real pairs passed (synthetic no-coupling test: ~11% of families instead of pair_p = 5%)
+            %every shuffle as z against the OTHER shuffles (leave-one-out mean and SD, from the sums: no extra loop), the same
+            %footing as the real value, which isn't in the shuffles either
+            nsh = sum(isnan(sh) == false, 4); %shuffles with a value
+            sum1 = sum(sh,4,'omitnan');
+            sum2 = sum(sh.^2,4,'omitnan');
+            mul = (sum1 - sh) ./ (nsh - 1); %mean of the other shuffles
+            varl = (sum2 - sh.^2 - (nsh - 1).*mul.^2) ./ (nsh - 2); %their variance
+            zs = (sh - mul) ./ sqrt(max(varl,0));
             sg = false(size(zp));
             for b = 1:nband
                 zsb = reshape(zs(:,:,b,:), [], n_shuf); % [pairs x shuffles]
-                if meas == 2 %two-sided
+                if meas == 2 || meas == 5 %two-sided (envelope r, net Granger)
                     maxz = max(abs(zsb),[],1,'omitnan');
                     thr = prctile(maxz, 100*(1 - pair_p));
                     sg(:,:,b) = abs(zp(:,:,b)) > thr;
@@ -2508,10 +2664,15 @@ if do_S1 == 1
                     thr = prctile(maxz, 100*(1 - pair_p));
                     sg(:,:,b) = zp(:,:,b) > thr;
                 end
-                coup_thr(meas,b,con) = thr;
+                if meas <= 2
+                    coup_thr(meas,b,con) = thr;
+                else
+                    gc_thr(meas-2,b,con) = thr;
+                end
             end
             zout{meas} = zp;
             sigout{meas} = sg;
+            exout{meas} = realv{meas} - mu;
         end
         coh{con} = r_coh;
         envr{con} = r_env;
@@ -2519,15 +2680,228 @@ if do_S1 == 1
         envr_z{con} = zout{2};
         coh_sig{con} = sigout{1};
         envr_sig{con} = sigout{2};
-        if do_mi == 1
-            mi{con} = r_mi;
-            mi_z{con} = zout{3};
-            mi_sig{con} = sigout{3};
+        coh_ex{con} = exout{1};
+        envr_ex{con} = exout{2};
+        trz_env{con} = trz; %per-trial pieces for the LW vs L test
+        trc_gc{con} = trc;
+        tra_v{con} = tav;
+        tra_s{con} = tas;
+        if do_gc == 1
+            gc_s1v1{con} = r_gc1;
+            gc_v1s1{con} = r_gc2;
+            gc_band_s1v1{con} = r_gcb(:,:,:,1);
+            gc_band_v1s1{con} = r_gcb(:,:,:,2);
+            gc_band_net{con} = r_gcb(:,:,:,3);
+            gc_z_s1v1{con} = zout{3};
+            gc_z_v1s1{con} = zout{4};
+            gc_z_net{con} = zout{5};
+            gc_sig_s1v1{con} = sigout{3};
+            gc_sig_v1s1{con} = sigout{4};
+            gc_sig_net{con} = sigout{5};
+            gc_ex_s1v1{con} = exout{3};
+            gc_ex_v1s1{con} = exout{4};
+            gc_ex_net{con} = exout{5};
+            gc_shufmean_s1v1{con} = reshape(mean(m_gc1,[1 2],'omitnan'), ngf, 1);
+            gc_shufmean_v1s1{con} = reshape(mean(m_gc2,[1 2],'omitnan'), ngf, 1);
         end
     end
-    clear Av As Vn Vc Sc Yvc Ysc X H E s_coh s_env s_mi sh zs realv shufv
+    %LW vs L for every channel pair (both groups in coup_groups): is the coupling different with the whisker input, and
+    %WHERE? For each matched pair (L_8 vs LW_8, ...): the two conditions' response trials pooled, the L / LW labels
+    %shuffled n_shuf times (group sizes kept, so the extra chance coupling of the smaller group is the same in every
+    %shuffle and can't fake a difference), each measure recomputed for both groups, statistic = LW - L. Each channel
+    %pair gets a z against its shuffles; significant when |z| beats the (1 - pair_p) percentile of the biggest |z| over
+    %all channel pairs (two-sided: LW can be higher or lower), per measure x band.
+    %Every measure is rebuilt from per-trial pieces, so a relabelling is just a different sum over the trials:
+    %coherence from each trial's tapered spectra (Yv / Ys), envelope r from each trial's Fisher z (trz_env), Granger from
+    %each trial's (cross-)covariances (tra_v, tra_s, trc_gc) refitted for both groups (the same maths as above)
+    lwl_meas = {'coherence','envelope r','Granger S1->V1','Granger V1->S1','Granger net'}; %measure names
+    lwl_meas = lwl_meas(1:2 + 3*do_gc);
+    nlm = numel(lwl_meas);
+    lwl_diff = cell(1,npair); %{pairs}{measures} [V1 ch x S1 ch x bands] real LW - L
+    lwl_z = cell(1,npair); %{pairs}{measures} [V1 ch x S1 ch x bands] z against the label shuffles
+    lwl_sig = cell(1,npair); %{pairs}{measures} [V1 ch x S1 ch x bands] significant (max-over-pairs, two-sided)
+    lwl_thr = nan(npair,nlm,nband); %the |z| thresholds
+    for k = 1:npair
+        ca = pairs(k,1); %group 1 condition (e.g. L_8)
+        cb = pairs(k,2); %group 2 condition (e.g. LW_8)
+        if all(ismember([ca cb], coupcons)) == false %one of them wasn't analysed
+            continue
+        end
+        nA = sum(resp{ca});
+        nB = sum(resp{cb});
+        nT = nA + nB;
+        disp(['S1: ' pairnames{k} ', LW vs L label shuffles for every channel pair'])
+
+        %relabellings: column 1 = the real labels (1 = group 2 trial; trials stacked group 1 first), then n_shuf shuffles
+        rng('default') %same shuffles every run
+        W = zeros(nT, n_shuf+1);
+        W(nA+1:end,1) = 1;
+        for s = 1:n_shuf
+            pm = randperm(nT);
+            W(pm(1:nB), s+1) = 1;
+        end
+        WA = 1 - W; %group 1 membership
+
+        %both conditions' per-trial pieces, trials stacked (group 1 first)
+        Ycv = cell(1,nband); %{bands} [band freqs x tapers x trials x V1 channels]
+        Ycs = cell(1,nband); %{bands} [band freqs x tapers x trials x S1 channels]
+        for b = 1:nband
+            Ycv{b} = cat(3, Yv{ca}{b}, Yv{cb}{b});
+            Ycs{b} = cat(3, Ys{ca}{b}, Ys{cb}{b});
+        end
+        zcat = cat(4, trz_env{ca}, trz_env{cb}); % [V1 ch x S1 ch x bands x trials] per-trial Fisher z
+        if do_gc == 1
+            ccat = cat(2, trc_gc{ca}, trc_gc{cb}); % [lags -p..p x trials x V1 ch x S1 ch] per-trial cross-covariance
+            vcat = cat(2, tra_v{ca}, tra_v{cb}); % [lags 0..p x trials x V1 ch] per-trial V1 autocovariance
+            scat = cat(2, tra_s{ca}, tra_s{cb}); % [lags 0..p x trials x S1 ch] per-trial S1 autocovariance
+        else
+            ccat = zeros(1,1,nrch,nch_s1); %(placeholders so the loop below can slice them)
+            vcat = zeros(1,1,nrch);
+            scat = zeros(1,1,nch_s1);
+        end
+
+        r_d = nan(nrch,nch_s1,nband,nlm); %real LW - L
+        s_d = nan(nrch,nch_s1,nband,nlm,n_shuf,'single'); %every relabelling's LW - L
+        % for c1 = 1:nch_s1 %(on nw workers, as the coupling)
+        parfor (c1 = 1:nch_s1, nw)
+            rd = nan(nrch,nband,nlm); %this S1 channel's results first (parfor needs it that way)
+            sdd = nan(nrch,nband,nlm,n_shuf,'single');
+            zc1 = zcat(:,c1,:,:); % [V1 ch x 1 x bands x trials]
+            cc1 = ccat(:,:,:,c1); % [lags x trials x V1 ch]
+            sc1 = scat(:,:,c1); % [lags 0..p x trials]
+            for b = 1:nband
+                B = Ycs{b}(:,:,:,c1); % [band freqs x tapers x trials] S1 tapered spectra
+                nfb = size(B,1);
+                Q = reshape(sum(abs(B).^2,2), nfb, nT).'; % [trials x freqs] each trial's S1 power (summed over tapers)
+                for iv = 1:nrch
+                    %coherence of each group in every relabelling: |sum of cross-spectra| / sqrt(sum V1 power x sum S1 power)
+                    A = Ycv{b}(:,:,:,iv);
+                    P = reshape(sum(abs(A).^2,2), nfb, nT).'; % [trials x freqs] V1 power
+                    C = reshape(sum(A .* conj(B),2), nfb, nT).'; % [trials x freqs] each trial's cross-spectrum
+                    cohB = abs(W.'*C) ./ sqrt((W.'*P) .* (W.'*Q)); % [relabellings x freqs]
+                    cohA = abs(WA.'*C) ./ sqrt((WA.'*P) .* (WA.'*Q));
+                    dd = mean(cohB,2) - mean(cohA,2); % [relabellings x 1] LW - L
+                    rd(iv,b,1) = dd(1);
+                    sdd(iv,b,1,:) = single(dd(2:end));
+                    %envelope r: mean Fisher z of each group (V1 trials without spikes left out)
+                    zt = reshape(zc1(iv,1,b,:), nT, 1);
+                    okz = double(isnan(zt) == false);
+                    zt(okz == 0) = 0;
+                    dd = (W.'*zt) ./ (W.'*okz) - (WA.'*zt) ./ (WA.'*okz);
+                    rd(iv,b,2) = dd(1);
+                    sdd(iv,b,2,:) = single(dd(2:end));
+                end
+            end
+            if do_gc == 1
+                nS = n_shuf + 1;
+                npg = 2*nS; %pages: group 2 of every relabelling, then group 1
+                GsB = sc1*W / nB; % [lags 0..p x relabellings] pooled S1 autocovariance of each group
+                GsA = sc1*WA / nA;
+                for iv = 1:nrch
+                    vt = vcat(:,:,iv); % [lags 0..p x trials]
+                    if all(vt(1,:) == 0) || all(sc1(1,:) == 0) %silent channel: no model
+                        continue
+                    end
+                    GvB = vt*W / nB;
+                    GvA = vt*WA / nA;
+                    ct = cc1(:,:,iv); % [lags -p..p x trials]
+                    CB = ct*W / nB; % [lags x relabellings]
+                    CA = ct*WA / nA;
+                    G = zeros(2,2,gc_order+1,npg);
+                    G(1,1,:,:) = reshape([GvB GvA], 1,1,gc_order+1,npg);
+                    G(2,2,:,:) = reshape([GsB GsA], 1,1,gc_order+1,npg);
+                    Cc = [CB CA]; % [lags x pages]
+                    G(1,2,:,:) = reshape(Cc(gc_order+1 + (0:gc_order),:), 1,1,gc_order+1,npg); %E[v(t) s(t-k)]
+                    G(2,1,:,:) = reshape(Cc(gc_order+1 - (0:gc_order),:), 1,1,gc_order+1,npg); %E[s(t) v(t-k)]
+                    %VAR(p) by Whittle's recursion, every page at once (as in the coupling loop)
+                    Af = zeros(2,2,gc_order,npg);
+                    Ab = zeros(2,2,gc_order,npg);
+                    Vf = G(:,:,1,:);
+                    Vb = G(:,:,1,:);
+                    for m = 1:gc_order
+                        D = G(:,:,m+1,:);
+                        for j = 1:m-1
+                            D = D - pagemtimes(Af(:,:,j,:), G(:,:,m-j+1,:));
+                        end
+                        Am = pagemtimes(D, inv2(Vb));
+                        Bm = pagemtimes(permute(D,[2 1 3 4]), inv2(Vf));
+                        Afo = Af;
+                        Abo = Ab;
+                        for j = 1:m-1
+                            Af(:,:,j,:) = Afo(:,:,j,:) - pagemtimes(Am, Abo(:,:,m-j,:));
+                            Ab(:,:,j,:) = Abo(:,:,j,:) - pagemtimes(Bm, Afo(:,:,m-j,:));
+                        end
+                        Af(:,:,m,:) = Am;
+                        Ab(:,:,m,:) = Bm;
+                        Vf = Vf - pagemtimes(Am, permute(D,[2 1 3 4]));
+                        Vb = Vb - pagemtimes(Bm, D);
+                    end
+                    %spectral Granger (Geweke), as in the coupling loop
+                    Asum = pagemtimes(reshape(Af,4,gc_order,npg), gc_E.');
+                    a11 = 1 - Asum(1,:,:);
+                    a21 = -Asum(2,:,:);
+                    a12 = -Asum(3,:,:);
+                    a22 = 1 - Asum(4,:,:);
+                    dt = a11.*a22 - a12.*a21;
+                    H11 = a22./dt;
+                    H12 = -a12./dt;
+                    H21 = -a21./dt;
+                    H22 = a11./dt;
+                    S11 = reshape(Vf(1,1,1,:),1,1,npg);
+                    S12 = reshape(Vf(1,2,1,:),1,1,npg);
+                    S22 = reshape(Vf(2,2,1,:),1,1,npg);
+                    Svv = abs(H11).^2.*S11 + 2*real(H11.*conj(H12)).*S12 + abs(H12).^2.*S22;
+                    Sss = abs(H21).^2.*S11 + 2*real(H21.*conj(H22)).*S12 + abs(H22).^2.*S22;
+                    f12 = real(reshape(log(Svv ./ (Svv - (S22 - S12.^2./S11).*abs(H12).^2)), ngf, npg)); % [freqs x pages] S1 -> V1
+                    f21 = real(reshape(log(Sss ./ (Sss - (S11 - S12.^2./S22).*abs(H21).^2)), ngf, npg)); %V1 -> S1
+                    for b = 1:nband
+                        bv1 = mean(f12(gc_fb{b},:),1); % [1 x pages]
+                        bv2 = mean(f21(gc_fb{b},:),1);
+                        d1 = bv1(1:nS) - bv1(nS+1:end); %group 2 - group 1, every relabelling
+                        d2 = bv2(1:nS) - bv2(nS+1:end);
+                        d3 = d1 - d2; %net
+                        rd(iv,b,3:5) = [d1(1) d2(1) d3(1)];
+                        sdd(iv,b,3,:) = single(d1(2:end));
+                        sdd(iv,b,4,:) = single(d2(2:end));
+                        sdd(iv,b,5,:) = single(d3(2:end));
+                    end
+                end
+            end
+            r_d(:,c1,:,:) = reshape(rd, nrch, 1, nband, nlm);
+            s_d(:,c1,:,:,:) = reshape(sdd, nrch, 1, nband, nlm, n_shuf);
+        end
+
+        %z against the relabellings (each relabelling against the OTHERS, as in the coupling) and the two-sided
+        %max-over-pairs threshold per measure x band
+        lwl_diff{k} = cell(1,nlm);
+        lwl_z{k} = cell(1,nlm);
+        lwl_sig{k} = cell(1,nlm);
+        for meas = 1:nlm
+            sh = double(reshape(s_d(:,:,:,meas,:), nrch, nch_s1, nband, n_shuf));
+            mu = mean(sh,4,'omitnan');
+            sd = std(sh,0,4,'omitnan');
+            zp = (r_d(:,:,:,meas) - mu) ./ sd;
+            nsh = sum(isnan(sh) == false, 4);
+            sum1 = sum(sh,4,'omitnan');
+            sum2 = sum(sh.^2,4,'omitnan');
+            mul = (sum1 - sh) ./ (nsh - 1);
+            varl = (sum2 - sh.^2 - (nsh - 1).*mul.^2) ./ (nsh - 2);
+            zs = (sh - mul) ./ sqrt(max(varl,0));
+            sg = false(size(zp));
+            for b = 1:nband
+                zsb = reshape(zs(:,:,b,:), [], n_shuf);
+                maxz = max(abs(zsb),[],1,'omitnan');
+                lwl_thr(k,meas,b) = prctile(maxz, 100*(1 - pair_p));
+                sg(:,:,b) = abs(zp(:,:,b)) > lwl_thr(k,meas,b);
+            end
+            lwl_diff{k}{meas} = r_d(:,:,:,meas);
+            lwl_z{k}{meas} = zp;
+            lwl_sig{k}{meas} = sg;
+        end
+    end
+    clear Av As Vn Yvc Ysc X H E s_coh s_env sh zs mul varl sum1 sum2 realv shufv Vg Sg s_gcb r_gcb r_gc1 r_gc2 m_gc1 m_gc2 exout trz trc tas tav Ycv Ycs zcat ccat vcat scat W WA r_d s_d sh zs mul varl sum1 sum2
     if mr_clean == 1
-        clear Yv Ys lfp_s1 %the tapered spectra and the S1 LFP aren't needed past here
+        clear Yv Ys lfp_s1 trz_env trc_gc tra_v tra_s %the tapered spectra, the S1 LFP and the per-trial pieces aren't needed past here
     end
     elapsed_time = toc;
     fprintf('execution time: %.2f seconds\n', elapsed_time);
@@ -2561,8 +2935,8 @@ if do_S1 == 1 && plot_coup == 1
     [~,sord] = sortrows([chshank_s1 chrow_s1]); %S1 channels shank by shank, top to bottom
     vbreak = find(diff(chshank(rch(vord))) ~= 0) + 0.5; %between V1 shanks
     sbreak = find(diff(chshank_s1(sord)) ~= 0) + 0.5; %between S1 shanks
-    measnames = {'spike-field coherence','envelope correlation','mutual information'};
-    nmeas = 2 + do_mi;
+    measnames = {'spike-field coherence','envelope correlation'};
+    nmeas = 2;
 
     %panels: each condition, then (both groups) each pair with both conditions analysed
     panlist = zeros(0,2); % [panels x 2] condition (or pair), 1 = condition / 2 = difference
@@ -2578,8 +2952,8 @@ if do_S1 == 1 && plot_coup == 1
     ptags = cell(1,npan); %file name tag of each panel
 
     %one colour range per measure x band over all the conditions (so the slider compares like with like):
-    %coherence and MI from 0 up, envelope r symmetric around 0
-    vv = {coh, envr, mi}; %{measures}{conditions} [V1 ch x S1 ch x bands]
+    %coherence from 0 up, envelope r symmetric around 0
+    vv = {coh, envr}; %{measures}{conditions} [V1 ch x S1 ch x bands]
     rawlim = ones(nmeas,nband); % [measures x bands] top of the colour range
     for meas = 1:nmeas
         for b = 1:nband
@@ -2597,7 +2971,7 @@ if do_S1 == 1 && plot_coup == 1
             end
         end
     end
-    cbunits = {'coherence','envelope r (Fisher-z mean over trials)','MI (bits)'};
+    cbunits = {'coherence','envelope r (Fisher-z mean over trials)'};
 
     coupfig = figure();
     set(coupfig, 'Position', get(0, 'Screensize'));
@@ -2610,9 +2984,7 @@ if do_S1 == 1 && plot_coup == 1
                 ax = nexttile(tl,(meas-1)*nband + b);
                 if panlist(ip,2) == 1 %one condition: the measure itself
                     con = panlist(ip,1);
-                    % zz = {coh_z{con}, envr_z{con}, mi_z{con}}; %commented out (and the z lines below): colour = the measure now
-                    ss = {coh_sig{con}, envr_sig{con}, mi_sig{con}};
-                    % M = zz{meas}(vord,sord,b);
+                    ss = {coh_sig{con}, envr_sig{con}};
                     M = vv{meas}{con}(vord,sord,b); % [V1 rows x S1 columns]
                     S = ss{meas}(vord,sord,b);
                     % lim = max([max(abs(M),[],'all','omitnan') coup_thr(meas,b,con)]);
@@ -2626,19 +2998,24 @@ if do_S1 == 1 && plot_coup == 1
                     end
                     cbtxt = cbunits{meas};
                     ttxt = [measnames{meas} ', ' bandnames{b} ' (' num2str(bands(b,1)) '-' num2str(bands(b,2)) ' Hz): ' num2str(sum(S,'all')) ' of ' num2str(numel(S)) ' pairs significant (thr z ' sprintf('%.2f',coup_thr(meas,b,con)) ')'];
-                else %pair difference, group 2 - group 1, of the measure itself
+                else %pair difference, group 2 - group 1, of the excess over chance (what the LW vs L test compares)
                     ca = pairs(panlist(ip,1),1);
                     cb = pairs(panlist(ip,1),2);
-                    M = vv{meas}{cb}(vord,sord,b) - vv{meas}{ca}(vord,sord,b);
-                    S = false(size(M));
+                    % M = vv{meas}{cb}(vord,sord,b) - vv{meas}{ca}(vord,sord,b); %commented out: raw values depend on the trial count
+                    vex = {coh_ex, envr_ex};
+                    M = vex{meas}{cb}(vord,sord,b) - vex{meas}{ca}(vord,sord,b);
+                    kk = panlist(ip,1);
+                    S = lwl_sig{kk}{meas}(vord,sord,b); %significant in the per-pair LW vs L test
+                    Dk = lwl_diff{kk}{meas}(vord,sord,b);
                     lim = max(abs(M),[],'all','omitnan');
                     if isempty(lim) || isnan(lim) || lim == 0
                         lim = 1;
                     end
                     cmapuse = divmap;
                     climuse = [-lim lim];
-                    cbtxt = [condis{cb} ' - ' condis{ca}];
-                    ttxt = [measnames{meas} ', ' bandnames{b} ' (' num2str(bands(b,1)) '-' num2str(bands(b,2)) ' Hz): ' condis{cb} ' - ' condis{ca}];
+                    cbtxt = [condis{cb} ' - ' condis{ca} ', excess over chance'];
+                    ttxt = [measnames{meas} ', ' bandnames{b} ' (' num2str(bands(b,1)) '-' num2str(bands(b,2)) ' Hz): ' condis{cb} ' - ' condis{ca} ...
+                        ', significant ' num2str(sum(S & Dk > 0,'all')) ' higher / ' num2str(sum(S & Dk < 0,'all')) ' lower (thr |z| ' sprintf('%.2f',lwl_thr(kk,meas,b)) ')'];
                 end
                 % if isempty(lim) || isnan(lim) || lim == 0 %commented out: each branch sets its own colour range now
                 %     lim = 1;
@@ -2673,7 +3050,7 @@ if do_S1 == 1 && plot_coup == 1
                 [num2str(sum(resp{con})) ' response trials, ' num2str(spec_use_ms(1)) '-' num2str(spec_use_ms(2)) ' ms, ' num2str(n_shuf) ' trial shuffles, max-over-pairs p < ' num2str(pair_p) ' (black squares); panel ' num2str(ip) ' of ' num2str(npan)]},'Interpreter','none')
             ptags{ip} = condis{con};
         else
-            title(tl,{[animal ' ' pairnames{panlist(ip,1)} ': V1 spikes x S1 LFP coupling, group 2 - group 1 (the measures, not z; no test)'], ...
+            title(tl,{[animal ' ' pairnames{panlist(ip,1)} ': V1 spikes x S1 LFP coupling, group 2 - group 1 of each pair''s excess over its shuffle chance level (colour); squares = per-pair LW vs L label-shuffle test, max-over-pairs'], ...
                 ['panel ' num2str(ip) ' of ' num2str(npan)]},'Interpreter','none')
             ptags{ip} = strrep(pairnames{panlist(ip,1)},' ','_');
         end
@@ -2701,6 +3078,244 @@ if do_S1 == 1 && plot_coup == 1
         set(findobj(coupfig,'Style','slider'),'Value',1);
     end
 end
+
+
+
+
+%% Data Visualization: S1 <-> V1 Granger
+
+%picture 1: heatmaps like the coupling ones (rows = responsive V1 channels, columns = S1 channels, shank by shank),
+%           one panel per condition (slider): rows S1 -> V1, V1 -> S1, net (S1->V1 minus V1->S1), columns the bands.
+%           Colour = the Granger value itself (one range per row x band over all conditions), black squares =
+%           significant against the trial shuffles (max-over-pairs). With both groups: group 2 - group 1 panels too
+%picture 2: Granger spectra per condition (slider): mean over all pairs of S1 -> V1 (red) and V1 -> S1 (black), the
+%           shuffle mean dotted (the chance level), bands shaded; then per band the mean over the pairs significant S1 -> V1
+if do_S1 == 1 && do_gc == 1 && plot_gc == 1
+    disp('S1: Making the Granger pictures')
+
+    if plotsave == 1
+        %create figure folder
+        if isfolder([save_directory '\Figures_StochRes\' animal]) == false
+            mkdir([save_directory '\Figures_StochRes\' animal])
+        end
+    end
+
+    nc = 128; %blue - white - red colour map (0 = white)
+    divmap = [linspace(0,1,nc)' linspace(0.3,1,nc)' ones(nc,1); ones(nc,1) linspace(1,0.2,nc)' linspace(1,0.2,nc)'];
+    [~,vord] = sortrows([chshank(rch) chrow(rch)]); %responsive V1 channels shank by shank, top to bottom
+    [~,sord] = sortrows([chshank_s1 chrow_s1]); %S1 channels shank by shank, top to bottom
+    vbreak = find(diff(chshank(rch(vord))) ~= 0) + 0.5; %between V1 shanks
+    sbreak = find(diff(chshank_s1(sord)) ~= 0) + 0.5; %between S1 shanks
+    dirnames = {'S1 -> V1','V1 -> S1','net (S1->V1 minus V1->S1)'};
+    gv = {gc_band_s1v1, gc_band_v1s1, gc_band_net}; %{directions}{conditions} [V1 ch x S1 ch x bands]
+    gs = {gc_sig_s1v1, gc_sig_v1s1, gc_sig_net};
+
+    %one colour range per direction x band over all the conditions: directions from 0 up, net symmetric around 0
+    glim = ones(3,nband);
+    for d = 1:3
+        for b = 1:nband
+            allv = [];
+            for con = coupcons
+                allv = [allv; reshape(gv{d}{con}(:,:,b),[],1)];
+            end
+            if d == 3
+                glim(d,b) = max(abs(allv),[],'omitnan');
+            else
+                glim(d,b) = max(allv,[],'omitnan');
+            end
+            if isempty(glim(d,b)) || isnan(glim(d,b)) || glim(d,b) <= 0
+                glim(d,b) = 1;
+            end
+        end
+    end
+
+    %panels: each condition, then (both groups) each pair with both conditions analysed
+    panlist = zeros(0,2); % [panels x 2] condition (or pair), 1 = condition / 2 = difference
+    for con = coupcons
+        panlist(end+1,:) = [con 1];
+    end
+    for k = 1:npair
+        if all(ismember(pairs(k,:), coupcons))
+            panlist(end+1,:) = [k 2];
+        end
+    end
+    npan = size(panlist,1);
+    ptags = cell(1,npan); %file name tag of each panel
+
+    gcfig = figure();
+    set(gcfig, 'Position', get(0, 'Screensize'));
+    for ip = 1:npan
+        pan = uipanel(gcfig, 'Units','normalized', 'Position',[0 0.05 1 0.95], 'BorderType','none', ...
+            'Tag','condpanel', 'UserData',ip, 'Visible', ip == 1);
+        tl = tiledlayout(pan, 3, nband, 'TileSpacing','compact','Padding','compact');
+        for d = 1:3
+            for b = 1:nband
+                ax = nexttile(tl,(d-1)*nband + b);
+                if panlist(ip,2) == 1 %one condition
+                    con = panlist(ip,1);
+                    M = gv{d}{con}(vord,sord,b); % [V1 rows x S1 columns]
+                    S = gs{d}{con}(vord,sord,b);
+                    if d == 3
+                        cmapuse = divmap;
+                        climuse = [-glim(d,b) glim(d,b)];
+                    else
+                        cmapuse = parula;
+                        climuse = [0 glim(d,b)];
+                    end
+                    cbtxt = 'Granger (log ratio)';
+                    ttxt = [dirnames{d} ', ' bandnames{b} ' (' num2str(bands(b,1)) '-' num2str(bands(b,2)) ' Hz): ' num2str(sum(S,'all')) ' of ' num2str(numel(S)) ' pairs significant (thr z ' sprintf('%.2f',gc_thr(d,b,con)) ')'];
+                else %pair difference, group 2 - group 1, of the excess over chance (what the LW vs L test compares)
+                    ca = pairs(panlist(ip,1),1);
+                    cb = pairs(panlist(ip,1),2);
+                    % M = gv{d}{cb}(vord,sord,b) - gv{d}{ca}(vord,sord,b); %commented out: raw values depend on the trial count
+                    gex = {gc_ex_s1v1, gc_ex_v1s1, gc_ex_net};
+                    M = gex{d}{cb}(vord,sord,b) - gex{d}{ca}(vord,sord,b);
+                    kk = panlist(ip,1);
+                    S = lwl_sig{kk}{2+d}(vord,sord,b); %significant in the per-pair LW vs L test
+                    Dk = lwl_diff{kk}{2+d}(vord,sord,b);
+                    lim = max(abs(M),[],'all','omitnan');
+                    if isempty(lim) || isnan(lim) || lim == 0
+                        lim = 1;
+                    end
+                    cmapuse = divmap;
+                    climuse = [-lim lim];
+                    cbtxt = [condis{cb} ' - ' condis{ca} ', excess over chance'];
+                    ttxt = [dirnames{d} ', ' bandnames{b} ' (' num2str(bands(b,1)) '-' num2str(bands(b,2)) ' Hz): ' condis{cb} ' - ' condis{ca} ...
+                        ', significant ' num2str(sum(S & Dk > 0,'all')) ' higher / ' num2str(sum(S & Dk < 0,'all')) ' lower (thr |z| ' sprintf('%.2f',lwl_thr(kk,2+d,b)) ')'];
+                end
+                h = imagesc(ax, M);
+                set(h,'AlphaData',isnan(M) == false)
+                colormap(ax,cmapuse)
+                clim(ax,climuse)
+                cbar = colorbar(ax);
+                cbar.Label.String = cbtxt;
+                hold(ax,'on')
+                [sr,sc] = find(S);
+                plot(ax, sc, sr, 's', 'MarkerEdgeColor','k', 'MarkerSize',5, 'LineWidth',1) %significant pairs
+                for i = 1:numel(vbreak)
+                    yline(ax, vbreak(i), 'Color',[.3 .3 .3])
+                end
+                for i = 1:numel(sbreak)
+                    xline(ax, sbreak(i), 'Color',[.3 .3 .3])
+                end
+                hold(ax,'off')
+                set(ax,'YTick',1:nrch,'YTickLabel',string(chanlist(rch(vord))),'XTick',1:nch_s1,'XTickLabel',string(chanlist_s1(sord)),'FontSize',5)
+                ylabel(ax,'V1 channel (responsive)','FontSize',8)
+                xlabel(ax,'S1 channel','FontSize',8)
+                title(ax, ttxt, 'Interpreter','none','FontSize',8)
+            end
+        end
+        if panlist(ip,2) == 1
+            con = panlist(ip,1);
+            title(tl,{[animal ' ' condis{con} ': spectral Granger causality between S1 LFP and V1 spiking, every channel pair'], ...
+                [num2str(sum(resp{con})) ' response trials, ' num2str(spec_use_ms(1)) '-' num2str(spec_use_ms(2)) ' ms, ' num2str(gc_bin_ms) ' ms bins, model order ' num2str(gc_order) ', ' ...
+                num2str(n_shuf) ' trial shuffles, max-over-pairs p < ' num2str(pair_p) ' (black squares); panel ' num2str(ip) ' of ' num2str(npan)]},'Interpreter','none')
+            ptags{ip} = condis{con};
+        else
+            title(tl,{[animal ' ' pairnames{panlist(ip,1)} ': Granger, group 2 - group 1 of each pair''s excess over its shuffle chance level (colour); squares = per-pair LW vs L label-shuffle test, max-over-pairs'], ...
+                ['panel ' num2str(ip) ' of ' num2str(npan)]},'Interpreter','none')
+            ptags{ip} = strrep(pairnames{panlist(ip,1)},' ','_');
+        end
+    end
+    if npan > 1
+        uicontrol(gcfig, 'Style','text', 'Units','normalized', 'Position',[0.18 0.008 0.11 0.03], ...
+            'String','panel:', 'HorizontalAlignment','right')
+        uicontrol(gcfig, 'Style','slider', 'Units','normalized', 'Position',[0.3 0.01 0.4 0.03], ...
+            'Min',1, 'Max',npan, 'Value',1, 'SliderStep',[1 1]/(npan-1), ...
+            'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
+            num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
+    end
+    drawnow %show it now; the script doesn't wait, it carries on
+    if plotsave == 1
+        fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'granger']);
+        pans = findobj(gcfig,'Tag','condpanel');
+        for k = 1:npan
+            set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
+            pk = findobj(pans,'flat','UserData',k);
+            tlk = findobj(pk,'Type','tiledlayout');
+            exportgraphics(tlk,[save_directory '\Figures_StochRes\' animal '\' fname '-' ptags{k} '.png'],'Resolution',png_res)
+        end
+        set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
+        set(findobj(gcfig,'Style','slider'),'Value',1);
+    end
+
+    %picture 2: Granger spectra
+    bandcol = [0.3 0.6 1; 1 0.75 0.2]; %shading of band 1, band 2 (more bands reuse these)
+    specfig = figure();
+    set(specfig, 'Position', get(0, 'Screensize'));
+    for ic = 1:numel(coupcons)
+        con = coupcons(ic);
+        pan = uipanel(specfig, 'Units','normalized', 'Position',[0 0.05 1 0.95], 'BorderType','none', ...
+            'Tag','condpanel', 'UserData',ic, 'Visible', ic == 1);
+        tl = tiledlayout(pan, 1, 1 + nband, 'TileSpacing','compact','Padding','compact');
+        G1 = reshape(gc_s1v1{con}, [], ngf); % [pairs x freqs] S1 -> V1
+        G2 = reshape(gc_v1s1{con}, [], ngf); %V1 -> S1
+        for t = 1:1 + nband
+            ax = nexttile(tl,t);
+            if t == 1
+                use = true(size(G1,1),1); %all pairs
+                ttxt = ['all ' num2str(size(G1,1)) ' pairs'];
+            else
+                sg = gc_sig_s1v1{con}(:,:,t-1);
+                use = sg(:); %pairs significant S1 -> V1 in this band
+                ttxt = ['pairs significant S1 -> V1 in ' bandnames{t-1} ' (' num2str(sum(use)) ')'];
+            end
+            ytop = max([mean(G1,1,'omitnan') mean(G2,1,'omitnan')],[],'omitnan');
+            if any(use)
+                ytop = max([ytop mean(G1(use,:),1,'omitnan') mean(G2(use,:),1,'omitnan')],[],'omitnan');
+            end
+            if isempty(ytop) || isnan(ytop) || ytop <= 0
+                ytop = 1;
+            end
+            hold(ax,'on')
+            for b = 1:nband %bands shaded
+                fill(ax, [bands(b,1) bands(b,2) bands(b,2) bands(b,1)], [0 0 1.05*ytop 1.05*ytop], bandcol(mod(b-1,2)+1,:), 'FaceAlpha',0.2, 'EdgeColor','none')
+            end
+            hl = gobjects(1,4); %line handles for the legend
+            if any(use)
+                hl(1) = plot(ax, gc_f, mean(G1(use,:),1,'omitnan'), 'r-', 'LineWidth',1.5);
+                hl(2) = plot(ax, gc_f, mean(G2(use,:),1,'omitnan'), 'k-', 'LineWidth',1.5);
+            else
+                text(ax,0.5,0.5,'no significant pairs','Units','normalized','HorizontalAlignment','center')
+            end
+            hl(3) = plot(ax, gc_f, gc_shufmean_s1v1{con}, 'r:', 'LineWidth',1); %chance level (shuffles, all pairs)
+            hl(4) = plot(ax, gc_f, gc_shufmean_v1s1{con}, 'k:', 'LineWidth',1);
+            hold(ax,'off')
+            xlim(ax,[gc_f(1) gc_f(end)])
+            ylim(ax,[0 1.05*ytop])
+            xlabel(ax,'Hz')
+            ylabel(ax,'Granger (log ratio)')
+            title(ax, ttxt, 'Interpreter','none')
+            if t == 1 && any(use)
+                legend(ax, hl, {'S1 -> V1','V1 -> S1','S1 -> V1 shuffled','V1 -> S1 shuffled'}, 'Location','northeast')
+            end
+        end
+        title(tl,{[animal ' ' condis{con} ': Granger spectra between S1 LFP and V1 spiking (mean over pairs; dotted = trial-shuffle chance level)'], ...
+            [num2str(sum(resp{con})) ' response trials, ' num2str(spec_use_ms(1)) '-' num2str(spec_use_ms(2)) ' ms, ' num2str(gc_bin_ms) ' ms bins, model order ' num2str(gc_order) '; condition ' num2str(ic) ' of ' num2str(numel(coupcons))]},'Interpreter','none')
+    end
+    if numel(coupcons) > 1
+        uicontrol(specfig, 'Style','text', 'Units','normalized', 'Position',[0.18 0.008 0.11 0.03], ...
+            'String','condition:', 'HorizontalAlignment','right')
+        uicontrol(specfig, 'Style','slider', 'Units','normalized', 'Position',[0.3 0.01 0.4 0.03], ...
+            'Min',1, 'Max',numel(coupcons), 'Value',1, 'SliderStep',[1 1]/(numel(coupcons)-1), ...
+            'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
+            num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
+    end
+    drawnow
+    if plotsave == 1
+        fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'granger_spectra']);
+        pans = findobj(specfig,'Tag','condpanel');
+        for k = 1:numel(coupcons)
+            set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
+            pk = findobj(pans,'flat','UserData',k);
+            tlk = findobj(pk,'Type','tiledlayout');
+            exportgraphics(tlk,[save_directory '\Figures_StochRes\' animal '\' fname '-' condis{coupcons(k)} '.png'],'Resolution',png_res)
+        end
+        set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
+        set(findobj(specfig,'Style','slider'),'Value',1);
+    end
+end
+
 
 
 
@@ -2821,15 +3436,15 @@ end
 %V1 x S1 coupling
 if do_S1 == 1 && exist('coh_sig','var')
     report(end+1) = "V1 spikes x S1 LFP coupling (" + nrch + " responsive V1 x " + nch_s1 + " S1 channels, " + spec_use_ms(1) + "-" + spec_use_ms(2) + " ms, unshifted trials, " + n_shuf + " trial shuffles, max-over-pairs p < " + pair_p + "):";
-    measnames = {'coherence','envelope r','MI (bits)'};
+    measnames = {'coherence','envelope r'};
     for con = coupcons
         report(end+1) = "  " + condis{con} + " (" + sum(resp{con}) + " response trials):";
         kneef = (s1apq{con}(:,2).^2) .^ (1 ./ s1apq{con}(:,3)); %Hz, knee frequency of each S1 channel
         report(end+1) = "    S1 1/f background over the S1 channels: median exponent " + sprintf('%.2f',median(s1apq{con}(:,3),'omitnan')) + ", median knee " + sprintf('%.1f',median(kneef,'omitnan')) + " Hz";
-        vals = {coh{con}, envr{con}, mi{con}};
-        sigs = {coh_sig{con}, envr_sig{con}, mi_sig{con}};
-        zs = {coh_z{con}, envr_z{con}, mi_z{con}};
-        for meas = 1:2 + do_mi
+        vals = {coh{con}, envr{con}};
+        sigs = {coh_sig{con}, envr_sig{con}};
+        zs = {coh_z{con}, envr_z{con}};
+        for meas = 1:2
             for b = 1:size(bands,1)
                 sg = sigs{meas}(:,:,b);
                 vb = vals{meas}(:,:,b);
@@ -2840,6 +3455,56 @@ if do_S1 == 1 && exist('coh_sig','var')
                     [~,ip] = max(zb(:)); %strongest significant pair
                     [iv,c1] = ind2sub(size(zb), ip);
                     txt = txt + "; strongest V1 CH" + chanlist(rch(iv)) + " x S1 CH" + chanlist_s1(c1) + " (" + sprintf('%.3f',vb(ip)) + ", z " + sprintf('%.1f',zs{meas}(iv,c1,b)) + ")";
+                end
+                report(end+1) = txt;
+            end
+        end
+    end
+end
+
+%S1 <-> V1 Granger
+if do_S1 == 1 && do_gc == 1 && exist('gc_sig_s1v1','var')
+    report(end+1) = "S1 <-> V1 spectral Granger (" + gc_bin_ms + " ms bins, model order " + gc_order + ", " + n_shuf + " trial shuffles, max-over-pairs p < " + pair_p + "; net = S1->V1 minus V1->S1):";
+    for con = coupcons
+        for b = 1:size(bands,1)
+            v1 = gc_band_s1v1{con}(:,:,b);
+            v2 = gc_band_v1s1{con}(:,:,b);
+            txt = "  " + condis{con} + ", " + bandnames{b} + ": median S1->V1 " + sprintf('%.4f',median(v1,'all','omitnan')) + ", V1->S1 " + sprintf('%.4f',median(v2,'all','omitnan')) + ...
+                ", net " + sprintf('%+.4f',median(gc_band_net{con}(:,:,b),'all','omitnan')) + "; significant pairs S1->V1 " + sum(gc_sig_s1v1{con}(:,:,b),'all') + ", V1->S1 " + sum(gc_sig_v1s1{con}(:,:,b),'all') + ...
+                ", net " + sum(gc_sig_net{con}(:,:,b),'all') + " of " + numel(v1);
+            sg = gc_sig_s1v1{con}(:,:,b);
+            if any(sg,'all')
+                zb = gc_z_s1v1{con}(:,:,b);
+                zb(sg == false) = NaN;
+                [~,ip] = max(zb(:)); %strongest significant S1 -> V1 pair
+                [iv,c1] = ind2sub(size(zb), ip);
+                txt = txt + "; strongest S1->V1: S1 CH" + chanlist_s1(c1) + " -> V1 CH" + chanlist(rch(iv)) + " (" + sprintf('%.4f',v1(ip)) + ", z " + sprintf('%.1f',zb(ip)) + ")";
+            end
+            report(end+1) = txt;
+        end
+    end
+end
+
+%LW vs L per channel pair
+if do_S1 == 1 && exist('lwl_sig','var') && any(cellfun(@isempty, lwl_sig) == false)
+    report(end+1) = "LW vs L per channel pair (L / LW labels shuffled among the pair's trials, " + n_shuf + " times; |z| beyond the max-over-pairs threshold, p < " + pair_p + "):";
+    for k = 1:npair
+        if isempty(lwl_sig{k})
+            continue
+        end
+        for meas = 1:numel(lwl_meas)
+            for b = 1:size(bands,1)
+                sg = lwl_sig{k}{meas}(:,:,b);
+                dk = lwl_diff{k}{meas}(:,:,b);
+                txt = "  " + pairnames{k} + ", " + lwl_meas{meas} + ", " + bandnames{b} + ": " + sum(sg & dk > 0,'all') + " channel pairs higher in " + condis{pairs(k,2)} + ", " + ...
+                    sum(sg & dk < 0,'all') + " lower, of " + numel(sg) + " (median difference " + sprintf('%+.4f',median(dk,'all','omitnan')) + ")";
+                if any(sg,'all')
+                    zb = abs(lwl_z{k}{meas}(:,:,b));
+                    zb(sg == false) = NaN;
+                    [~,ip] = max(zb(:)); %strongest significant one
+                    [iv,c1] = ind2sub(size(zb), ip);
+                    zk = lwl_z{k}{meas}(:,:,b); %this band's z (ip indexes the band slice)
+                    txt = txt + "; strongest V1 CH" + chanlist(rch(iv)) + " x S1 CH" + chanlist_s1(c1) + " (" + sprintf('%+.4f',dk(ip)) + ", z " + sprintf('%.1f',zk(ip)) + ")";
                 end
                 report(end+1) = txt;
             end
@@ -2877,7 +3542,7 @@ setnames = {'animal','region','grpnames','condis_grp','tr_conditional_use','spik
     'resp_ms','pre_resp_ms','pre_end_ms','fake_ms','tmpl_trim','tmpl_iter','chan_z_min','resp_null_prct','resp_method','base_use_ms','peak_win_ms','resp_z','resp_shank_nch','resp_min_ms','resp_together_ms','resp_count_ms','resp_min_spk','keep_qc','qc_plotsave', ...
     'align_ms','max_lag_ms','n_perm','fdr_q', ...
     'do_S1','s1_region','lfp_load_ms','coup_groups','spec_ms','psd_nw','psd_hz','line_out','line_hz', ...
-    'bands','bandnames','env_step_ms','do_mi','n_shuf','pair_p','load_ms'};
+    'bands','bandnames','env_step_ms','n_shuf','pair_p','do_gc','gc_bin_ms','gc_order','load_ms'};
 settings = struct();
 for i = 1:numel(setnames)
     if exist(setnames{i},'var')
@@ -2895,7 +3560,10 @@ savelist = {'settings','report','run_notes','condis','condgrp','filesused','ntri
     'al_names','tc_trial','tc_trial_null','tc_cond','tc_cond_null','cmppairs','cmpnames','tc_cmp_p','tc_cmp_q','tc_p', ...
     'tc_gain','tc_gain_p','tc_gain_q','tc_alvsun_p','tc_gainch','tc_gainpair_p','tc_gainpair_q','tc_gainpair_d', ...
     'prb_s1','pmap_s1','chanlist_s1','chrow_s1','chshank_s1','t_lfp','coupcons','spec_use_ms','spec_f','v1psd','s1psd','s1apq','s1bg','s1osc','rch', ...
-    'coh','envr','mi','coh_z','envr_z','mi_z','coh_sig','envr_sig','mi_sig','coup_thr'};
+    'coh','envr','coh_z','envr_z','coh_sig','envr_sig','coup_thr','coh_ex','envr_ex', ...
+    'gc_f','gc_s1v1','gc_v1s1','gc_band_s1v1','gc_band_v1s1','gc_band_net','gc_z_s1v1','gc_z_v1s1','gc_z_net', ...
+    'gc_sig_s1v1','gc_sig_v1s1','gc_sig_net','gc_thr','gc_shufmean_s1v1','gc_shufmean_v1s1','gc_ex_s1v1','gc_ex_v1s1','gc_ex_net', ...
+    'lwl_meas','lwl_diff','lwl_z','lwl_sig','lwl_thr'};
 %Quality Control details: how the response trials and responsive channels were found (keep_qc)
 if keep_qc == 1
     savelist = [savelist, {'chan_medz','chan_medz_cond','respchans_cond','respscore','respnull','respthr','resp_tmpl','tmpl_rounds', ...
