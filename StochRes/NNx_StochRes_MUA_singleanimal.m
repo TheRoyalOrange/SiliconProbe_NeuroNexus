@@ -23,6 +23,8 @@
 %        (VAR model on gc_bin_ms bins, condition-mean time courses out), band means against the same trial shuffles
 %        With both groups in coup_groups: LW vs L for every channel pair (L / LW labels shuffled among the pair's trials)
 %     7) post-run report (printed once at the end and saved) and the results saved with all settings
+%     8) (do_S1 = 1, plot_pairview = 1) keyboard viewer: single response trials of any V1 x S1 channel pair, S1 band-passed
+%        LFP and V1 spike rate overlaid (nothing saved; its two local functions are the last lines of the script)
 %   (tried earlier and dropped: the sliding-window
 %   time-frequency shape maps, the probe-layout spectra (psd_tot) and the alignment-method picture)
 %
@@ -309,6 +311,10 @@ plot_psdgrid = 1;
 plot_coup = 1;
 %Granger heatmaps and spectra? (do_S1 = 1, do_gc = 1)
 plot_gc = 1;
+%trial by trial viewer for every V1 x S1 channel pair, with the keyboard? (do_S1 = 1; last section, keeps the S1 LFP in memory)
+plot_pairview = 1;
+    % 0 = no
+    % 1 = yes
 %save the figures? (as PNGs; a figure with a slider gets one PNG per panel)
 plotsave = 1;
 png_res = 150; %dpi of the saved PNGs (a full-screen figure -> ~2900 x 1600 px)
@@ -2116,155 +2122,155 @@ if do_S1 == 1
 end
 
 
-%% Data Visualization: V1 spike spectra x S1 LFP spectra grid
-
-%rows = responsive V1 channels (shank by shank, top to bottom), columns = EVERY kept S1 channel (shank by shank, top to
-%bottom). Each cell: that V1 channel's spike-count spectrum (black, 1 = random firing, dotted line) and that S1 channel's
-%LFP spectrum above its 1/f background (red, 0 dB = dotted line), psd_hz left to right, the bands shaded. One panel per
-%condition, slider.
-%Drawn as ONE axes per condition, every cell placed in its own box of a grid, so the whole grid is a handful of
-%graphics objects (one line for all V1 curves, one for all S1 curves, one patch per band) and draws in seconds
-%(was one small axes per pair, thousands of objects, minutes to draw and save)
-if do_S1 == 1 && plot_psdgrid == 1
-    disp('S1: Making the V1 x S1 spectra grid')
-
-    if plotsave == 1
-        %create figure folder
-        if isfolder([save_directory '\Figures_StochRes\' animal]) == false
-            mkdir([save_directory '\Figures_StochRes\' animal])
-        end
-    end
-
-    [~,vord] = sortrows([chshank(rch) chrow(rch)]); %responsive V1 channels shank by shank, top to bottom
-    vrows = rch(vord); %places in chanlist, in row order
-    [~,scols] = sortrows([chshank_s1 chrow_s1]); %every S1 channel shank by shank, top to bottom (places in chanlist_s1)
-    ncol = numel(scols);
-
-    %one y range for all cells and conditions (so they compare): V1 over the responsive channels, S1 over all its channels
-    v1all = [];
-    s1all = [];
-    for con = coupcons
-        v1all = [v1all; v1psd{con}(:,rch)];
-        s1all = [s1all; s1osc{con}];
-    end
-    v1lim = [min(v1all,[],'all','omitnan') max(v1all,[],'all','omitnan')];
-    s1lim = [min(s1all,[],'all','omitnan') max(s1all,[],'all','omitnan')];
-    if any(isnan(v1lim)) || v1lim(1) == v1lim(2)
-        v1lim = [0 2];
-    end
-    if any(isnan(s1lim)) || s1lim(1) == s1lim(2)
-        s1lim = [0 1];
-    end
-    bandcol = [0.3 0.6 1; 1 0.75 0.2]; %shading of band 1, band 2 (more bands reuse these)
-
-    %where everything goes: cell (row r, column c) is the box x = c-1 .. c, y = nrch-r .. nrch-r+1 (row 1 on top),
-    %with a small margin inside so neighbouring cells don't touch
-    mrg = 0.06; %margin, fraction of a cell
-    fx = (spec_f - psd_hz(1)) / diff(psd_hz) * (1 - 2*mrg) + mrg; % [freqs x 1] x of each frequency inside a cell (0..1)
-    v1y = @(v) (v - v1lim(1)) / diff(v1lim) * (1 - 2*mrg) + mrg; %V1 value -> height inside a cell (0..1)
-    s1y = @(v) (v - s1lim(1)) / diff(s1lim) * (1 - 2*mrg) + mrg; %S1 dB -> height inside a cell
-    nf1 = numel(spec_f) + 1; %points per cell in the long lines (+1 for the NaN gap)
-    vbreak = find(diff(chshank(vrows)) ~= 0); %rows after which a new V1 shank starts
-    sbreak = find(diff(chshank_s1(scols)) ~= 0); %columns after which a new S1 shank starts
-
-    %the reference lines (V1 = 1, S1 = 0 dB) and band patches are the same for every condition: built once
-    xref = nan(nf1, nrch*ncol); % [points x cells] cell's x for its lines
-    yref1 = nan(2, nrch*ncol); %flat V1 = 1 line per cell (2 points)
-    yref0 = nan(2, nrch*ncol); %flat S1 = 0 dB line per cell
-    xflat = nan(3, nrch*ncol); %x of the flat lines (2 points + NaN)
-    k = 0;
-    for r = 1:nrch
-        for c = 1:ncol
-            k = k + 1;
-            xref(1:end-1,k) = (c-1) + fx;
-            xflat(1:2,k) = (c-1) + [mrg; 1-mrg];
-            yref1(:,k) = (nrch-r) + v1y(1);
-            yref0(:,k) = (nrch-r) + s1y(0);
-        end
-    end
-    yref1(3,:) = NaN;
-    yref0(3,:) = NaN;
-    bandx = cell(1,nband); %{bands} [4 x columns] patch corners: one strip per column, all rows high
-    for b = 1:nband
-        x0 = (bands(b,1) - psd_hz(1)) / diff(psd_hz) * (1 - 2*mrg) + mrg;
-        x1 = (bands(b,2) - psd_hz(1)) / diff(psd_hz) * (1 - 2*mrg) + mrg;
-        bandx{b} = (0:ncol-1) + [x0; x1; x1; x0];
-    end
-
-    gridfig = figure();
-    set(gridfig, 'Position', get(0, 'Screensize'));
-    for ic = 1:numel(coupcons)
-        con = coupcons(ic);
-        pan = uipanel(gridfig, 'Units','normalized', 'Position',[0 0.05 1 0.95], 'BorderType','none', ...
-            'Tag','condpanel', 'UserData',ic, 'Visible', ic == 1);
-        ax = axes(pan, 'Position',[0.06 0.04 0.92 0.84]);
-        hold(ax,'on')
-
-        %band shading, one patch per band
-        for b = 1:nband
-            patch(ax, bandx{b}, repmat([0; 0; nrch; nrch], 1, ncol), bandcol(mod(b-1,2)+1,:), 'FaceAlpha',0.2, 'EdgeColor','none')
-        end
-
-        %every cell's curves, as one long line per probe (cells separated by NaN)
-        yv = nan(nf1, nrch*ncol); % [points x cells] V1 curve heights
-        ys = nan(nf1, nrch*ncol); %S1 curve heights
-        k = 0;
-        for r = 1:nrch
-            for c = 1:ncol
-                k = k + 1;
-                yv(1:end-1,k) = (nrch-r) + v1y(v1psd{con}(:,vrows(r)));
-                ys(1:end-1,k) = (nrch-r) + s1y(s1osc{con}(:,scols(c)));
-            end
-        end
-        plot(ax, xflat(:), yref1(:), 'k:', 'LineWidth',0.3) %V1 = 1 (random firing)
-        plot(ax, xflat(:), yref0(:), 'r:', 'LineWidth',0.3) %S1 = 0 dB (the 1/f background)
-        plot(ax, xref(:), yv(:), 'k-', 'LineWidth',0.5)
-        plot(ax, xref(:), ys(:), 'r-', 'LineWidth',0.5)
-
-        %cell borders (light), shank borders (dark)
-        xline(ax, 0:ncol, 'Color',[.85 .85 .85])
-        yline(ax, 0:nrch, 'Color',[.85 .85 .85])
-        xline(ax, sbreak, 'Color',[.3 .3 .3], 'LineWidth',1)
-        yline(ax, nrch - vbreak, 'Color',[.3 .3 .3], 'LineWidth',1)
-        hold(ax,'off')
-
-        xlim(ax,[0 ncol])
-        ylim(ax,[0 nrch])
-        set(ax, 'XAxisLocation','top', 'XTick',(1:ncol) - 0.5, 'XTickLabel',"CH" + string(chanlist_s1(scols)) + " sh" + string(chshank_s1(scols)), ...
-            'YTick',(1:nrch) - 0.5, 'YTickLabel',flipud("V1 CH" + string(chanlist(vrows))), 'TickLength',[0 0], 'FontSize',5, 'Box','on')
-        xtickangle(ax,90)
-        title(ax,{[animal ' ' condis{con} ': V1 spike-count spectrum (black, dotted = 1 = random firing) vs S1 LFP spectrum above its 1/f background (red, dotted = 0 dB; knee-model fit), all S1 channels (columns, shank by shank)'], ...
-            ['each cell: ' num2str(psd_hz(1)) '-' num2str(psd_hz(2)) ' Hz left to right; height V1 ' sprintf('%.2f',v1lim(1)) '-' sprintf('%.2f',v1lim(2)) ' x random firing, S1 ' sprintf('%.1f',s1lim(1)) ' to ' sprintf('%.1f',s1lim(2)) ' dB above 1/f; ' ...
-            num2str(sum(resp{con})) ' response trials, ' num2str(spec_use_ms(1)) '-' num2str(spec_use_ms(2)) ' ms; shaded: ' strjoin(bandnames,', ') ' (' char(strjoin((string(bands(:,1)) + "-" + string(bands(:,2)))',', ')) ' Hz); condition ' num2str(ic) ' of ' num2str(numel(coupcons))]},'Interpreter','none','FontSize',8)
-    end
-
-    %the slider (finds the panels by their Tag, so it still works in the saved figure)
-    if numel(coupcons) > 1
-        uicontrol(gridfig, 'Style','text', 'Units','normalized', 'Position',[0.18 0.008 0.11 0.03], ...
-            'String','condition:', 'HorizontalAlignment','right')
-        uicontrol(gridfig, 'Style','slider', 'Units','normalized', 'Position',[0.3 0.01 0.4 0.03], ...
-            'Min',1, 'Max',numel(coupcons), 'Value',1, 'SliderStep',[1 1]/(numel(coupcons)-1), ...
-            'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
-            num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
-    end
-    drawnow %show it now; the script doesn't wait, it carries on
-
-    if plotsave == 1
-        fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'psdgrid']);
-        %one PNG per panel (= condition), at twice png_res: the cells are small
-        pans = findobj(gridfig,'Tag','condpanel');
-        for k = 1:numel(coupcons)
-            set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
-            pk = findobj(pans,'flat','UserData',k);
-            exportgraphics(findobj(pk,'Type','axes'),[save_directory '\Figures_StochRes\' animal '\' fname '-' condis{coupcons(k)} '.png'],'Resolution',2*png_res)
-        end
-        set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
-        set(findobj(gridfig,'Style','slider'),'Value',1);
-    end
-end
-
-
-
+% %% Data Visualization: V1 spike spectra x S1 LFP spectra grid
+% 
+% %rows = responsive V1 channels (shank by shank, top to bottom), columns = EVERY kept S1 channel (shank by shank, top to
+% %bottom). Each cell: that V1 channel's spike-count spectrum (black, 1 = random firing, dotted line) and that S1 channel's
+% %LFP spectrum above its 1/f background (red, 0 dB = dotted line), psd_hz left to right, the bands shaded. One panel per
+% %condition, slider.
+% %Drawn as ONE axes per condition, every cell placed in its own box of a grid, so the whole grid is a handful of
+% %graphics objects (one line for all V1 curves, one for all S1 curves, one patch per band) and draws in seconds
+% %(was one small axes per pair, thousands of objects, minutes to draw and save)
+% if do_S1 == 1 && plot_psdgrid == 1
+%     disp('S1: Making the V1 x S1 spectra grid')
+% 
+%     if plotsave == 1
+%         %create figure folder
+%         if isfolder([save_directory '\Figures_StochRes\' animal]) == false
+%             mkdir([save_directory '\Figures_StochRes\' animal])
+%         end
+%     end
+% 
+%     [~,vord] = sortrows([chshank(rch) chrow(rch)]); %responsive V1 channels shank by shank, top to bottom
+%     vrows = rch(vord); %places in chanlist, in row order
+%     [~,scols] = sortrows([chshank_s1 chrow_s1]); %every S1 channel shank by shank, top to bottom (places in chanlist_s1)
+%     ncol = numel(scols);
+% 
+%     %one y range for all cells and conditions (so they compare): V1 over the responsive channels, S1 over all its channels
+%     v1all = [];
+%     s1all = [];
+%     for con = coupcons
+%         v1all = [v1all; v1psd{con}(:,rch)];
+%         s1all = [s1all; s1osc{con}];
+%     end
+%     v1lim = [min(v1all,[],'all','omitnan') max(v1all,[],'all','omitnan')];
+%     s1lim = [min(s1all,[],'all','omitnan') max(s1all,[],'all','omitnan')];
+%     if any(isnan(v1lim)) || v1lim(1) == v1lim(2)
+%         v1lim = [0 2];
+%     end
+%     if any(isnan(s1lim)) || s1lim(1) == s1lim(2)
+%         s1lim = [0 1];
+%     end
+%     bandcol = [0.3 0.6 1; 1 0.75 0.2]; %shading of band 1, band 2 (more bands reuse these)
+% 
+%     %where everything goes: cell (row r, column c) is the box x = c-1 .. c, y = nrch-r .. nrch-r+1 (row 1 on top),
+%     %with a small margin inside so neighbouring cells don't touch
+%     mrg = 0.06; %margin, fraction of a cell
+%     fx = (spec_f - psd_hz(1)) / diff(psd_hz) * (1 - 2*mrg) + mrg; % [freqs x 1] x of each frequency inside a cell (0..1)
+%     v1y = @(v) (v - v1lim(1)) / diff(v1lim) * (1 - 2*mrg) + mrg; %V1 value -> height inside a cell (0..1)
+%     s1y = @(v) (v - s1lim(1)) / diff(s1lim) * (1 - 2*mrg) + mrg; %S1 dB -> height inside a cell
+%     nf1 = numel(spec_f) + 1; %points per cell in the long lines (+1 for the NaN gap)
+%     vbreak = find(diff(chshank(vrows)) ~= 0); %rows after which a new V1 shank starts
+%     sbreak = find(diff(chshank_s1(scols)) ~= 0); %columns after which a new S1 shank starts
+% 
+%     %the reference lines (V1 = 1, S1 = 0 dB) and band patches are the same for every condition: built once
+%     xref = nan(nf1, nrch*ncol); % [points x cells] cell's x for its lines
+%     yref1 = nan(2, nrch*ncol); %flat V1 = 1 line per cell (2 points)
+%     yref0 = nan(2, nrch*ncol); %flat S1 = 0 dB line per cell
+%     xflat = nan(3, nrch*ncol); %x of the flat lines (2 points + NaN)
+%     k = 0;
+%     for r = 1:nrch
+%         for c = 1:ncol
+%             k = k + 1;
+%             xref(1:end-1,k) = (c-1) + fx;
+%             xflat(1:2,k) = (c-1) + [mrg; 1-mrg];
+%             yref1(:,k) = (nrch-r) + v1y(1);
+%             yref0(:,k) = (nrch-r) + s1y(0);
+%         end
+%     end
+%     yref1(3,:) = NaN;
+%     yref0(3,:) = NaN;
+%     bandx = cell(1,nband); %{bands} [4 x columns] patch corners: one strip per column, all rows high
+%     for b = 1:nband
+%         x0 = (bands(b,1) - psd_hz(1)) / diff(psd_hz) * (1 - 2*mrg) + mrg;
+%         x1 = (bands(b,2) - psd_hz(1)) / diff(psd_hz) * (1 - 2*mrg) + mrg;
+%         bandx{b} = (0:ncol-1) + [x0; x1; x1; x0];
+%     end
+% 
+%     gridfig = figure();
+%     set(gridfig, 'Position', get(0, 'Screensize'));
+%     for ic = 1:numel(coupcons)
+%         con = coupcons(ic);
+%         pan = uipanel(gridfig, 'Units','normalized', 'Position',[0 0.05 1 0.95], 'BorderType','none', ...
+%             'Tag','condpanel', 'UserData',ic, 'Visible', ic == 1);
+%         ax = axes(pan, 'Position',[0.06 0.04 0.92 0.84]);
+%         hold(ax,'on')
+% 
+%         %band shading, one patch per band
+%         for b = 1:nband
+%             patch(ax, bandx{b}, repmat([0; 0; nrch; nrch], 1, ncol), bandcol(mod(b-1,2)+1,:), 'FaceAlpha',0.2, 'EdgeColor','none')
+%         end
+% 
+%         %every cell's curves, as one long line per probe (cells separated by NaN)
+%         yv = nan(nf1, nrch*ncol); % [points x cells] V1 curve heights
+%         ys = nan(nf1, nrch*ncol); %S1 curve heights
+%         k = 0;
+%         for r = 1:nrch
+%             for c = 1:ncol
+%                 k = k + 1;
+%                 yv(1:end-1,k) = (nrch-r) + v1y(v1psd{con}(:,vrows(r)));
+%                 ys(1:end-1,k) = (nrch-r) + s1y(s1osc{con}(:,scols(c)));
+%             end
+%         end
+%         plot(ax, xflat(:), yref1(:), 'k:', 'LineWidth',0.3) %V1 = 1 (random firing)
+%         plot(ax, xflat(:), yref0(:), 'r:', 'LineWidth',0.3) %S1 = 0 dB (the 1/f background)
+%         plot(ax, xref(:), yv(:), 'k-', 'LineWidth',0.5)
+%         plot(ax, xref(:), ys(:), 'r-', 'LineWidth',0.5)
+% 
+%         %cell borders (light), shank borders (dark)
+%         xline(ax, 0:ncol, 'Color',[.85 .85 .85])
+%         yline(ax, 0:nrch, 'Color',[.85 .85 .85])
+%         xline(ax, sbreak, 'Color',[.3 .3 .3], 'LineWidth',1)
+%         yline(ax, nrch - vbreak, 'Color',[.3 .3 .3], 'LineWidth',1)
+%         hold(ax,'off')
+% 
+%         xlim(ax,[0 ncol])
+%         ylim(ax,[0 nrch])
+%         set(ax, 'XAxisLocation','top', 'XTick',(1:ncol) - 0.5, 'XTickLabel',"CH" + string(chanlist_s1(scols)) + " sh" + string(chshank_s1(scols)), ...
+%             'YTick',(1:nrch) - 0.5, 'YTickLabel',flipud("V1 CH" + string(chanlist(vrows))), 'TickLength',[0 0], 'FontSize',5, 'Box','on')
+%         xtickangle(ax,90)
+%         title(ax,{[animal ' ' condis{con} ': V1 spike-count spectrum (black, dotted = 1 = random firing) vs S1 LFP spectrum above its 1/f background (red, dotted = 0 dB; knee-model fit), all S1 channels (columns, shank by shank)'], ...
+%             ['each cell: ' num2str(psd_hz(1)) '-' num2str(psd_hz(2)) ' Hz left to right; height V1 ' sprintf('%.2f',v1lim(1)) '-' sprintf('%.2f',v1lim(2)) ' x random firing, S1 ' sprintf('%.1f',s1lim(1)) ' to ' sprintf('%.1f',s1lim(2)) ' dB above 1/f; ' ...
+%             num2str(sum(resp{con})) ' response trials, ' num2str(spec_use_ms(1)) '-' num2str(spec_use_ms(2)) ' ms; shaded: ' strjoin(bandnames,', ') ' (' char(strjoin((string(bands(:,1)) + "-" + string(bands(:,2)))',', ')) ' Hz); condition ' num2str(ic) ' of ' num2str(numel(coupcons))]},'Interpreter','none','FontSize',8)
+%     end
+% 
+%     %the slider (finds the panels by their Tag, so it still works in the saved figure)
+%     if numel(coupcons) > 1
+%         uicontrol(gridfig, 'Style','text', 'Units','normalized', 'Position',[0.18 0.008 0.11 0.03], ...
+%             'String','condition:', 'HorizontalAlignment','right')
+%         uicontrol(gridfig, 'Style','slider', 'Units','normalized', 'Position',[0.3 0.01 0.4 0.03], ...
+%             'Min',1, 'Max',numel(coupcons), 'Value',1, 'SliderStep',[1 1]/(numel(coupcons)-1), ...
+%             'Callback', @(src,evt) set(findobj(src.Parent,'Tag','condpanel'), {'Visible'}, ...
+%             num2cell(cell2mat(get(findobj(src.Parent,'Tag','condpanel'),'UserData')) == round(src.Value))));
+%     end
+%     drawnow %show it now; the script doesn't wait, it carries on
+% 
+%     if plotsave == 1
+%         fname = sprintf([animal '-' ProbeInfo.Areas{prb} '_Probe' '-' 'psdgrid']);
+%         %one PNG per panel (= condition), at twice png_res: the cells are small
+%         pans = findobj(gridfig,'Tag','condpanel');
+%         for k = 1:numel(coupcons)
+%             set(pans, {'Visible'}, num2cell([pans.UserData]' == k));
+%             pk = findobj(pans,'flat','UserData',k);
+%             exportgraphics(findobj(pk,'Type','axes'),[save_directory '\Figures_StochRes\' animal '\' fname '-' condis{coupcons(k)} '.png'],'Resolution',2*png_res)
+%         end
+%         set(pans, {'Visible'}, num2cell([pans.UserData]' == 1));
+%         set(findobj(gridfig,'Style','slider'),'Value',1);
+%     end
+% end
+% 
+% 
+% 
 
 %% Data Analysis: V1 spikes x S1 LFP coupling in the bands, every channel pair
 
@@ -2901,7 +2907,11 @@ if do_S1 == 1
     end
     clear Av As Vn Yvc Ysc X H E s_coh s_env sh zs mul varl sum1 sum2 realv shufv Vg Sg s_gcb r_gcb r_gc1 r_gc2 m_gc1 m_gc2 exout trz trc tas tav Ycv Ycs zcat ccat vcat scat W WA r_d s_d sh zs mul varl sum1 sum2
     if mr_clean == 1
-        clear Yv Ys lfp_s1 trz_env trc_gc tra_v tra_s %the tapered spectra, the S1 LFP and the per-trial pieces aren't needed past here
+        % clear Yv Ys lfp_s1 trz_env trc_gc tra_v tra_s %commented out: the trial by trial viewer at the end needs the S1 LFP
+        clear Yv Ys trz_env trc_gc tra_v tra_s %the tapered spectra and the per-trial pieces aren't needed past here
+        if plot_pairview == 0
+            clear lfp_s1 %only the viewer would still need it
+        end
     end
     elapsed_time = toc;
     fprintf('execution time: %.2f seconds\n', elapsed_time);
@@ -3579,3 +3589,261 @@ fname = sprintf([animal '-StochRes_MUA']);
 save([save_directory '\StochRes\' animal '\' fname], savelist{:}, '-v7.3');
 disp(['saved: ' save_directory '\StochRes\' animal '\' fname '.mat'])
 
+
+
+%Now beginning the trial by trial viewer (nothing after the save changes any results, it's just for looking)
+
+%% Data Visualization: V1 spiking x S1 band, trial by trial
+
+%scroll through every V1 x S1 channel pair and look at the single trials: bandpassed S1 LFP (red) and V1 spike rate
+%(black) of the same trial on top of each other, each at its own scale, trial 1 on top, descending in recording order.
+%Response trials only, unshifted (the ones everything else uses). Click the figure first, then the keys:
+%   left / right = V1 channel      up / down = S1 channel (both shank by shank, top to bottom, they stop at the ends)
+%   c = next condition (paired ones follow each other: L_4, LW_4, L_8, LW_8, ...)      b = next band
+%The maps on the right are the two probes (columns = shanks, top row = top of the probe), with the channels you're looking
+%at filled in: black = V1, red = S1 (same as the traces). Darker grey = responsive V1 channel, x = removed
+%Scales: red is centred on its row, black has 0 spikes/s at the bottom of its row. They're fixed per V1 channel, and per
+%S1 channel and band, over ALL conditions, so flipping through conditions compares real sizes (scale bars on the right)
+%Keep in mind: the filter runs forwards and backwards, so band activity smears a little to both sides (some of the
+%"pre-stim" alpha is spill from after the stimulus), and the smoothing (smooth_ms = 25) about halves anything near 40 Hz
+%in the spike rate, so a low gamma rhythm looks weaker in V1 than it is. The keys don't work while zoom / pan is on
+if do_S1 == 1 && plot_pairview == 1
+    disp('S1: Making the trial by trial viewer, use the arrow keys, c and b')
+    if exist('lfp_s1','var') == false
+        error('lfp_s1 is gone (it was cleared to save memory). Set plot_pairview = 1 and rerun from the S1 LFP loading section')
+    end
+
+    pidx = find(t_bin >= plot_ms(1) & t_bin < plot_ms(2)); %MUA bins shown
+    % vwcons = find(ismember(condgrp, coup_groups)); %commented out: all of group 1 came before group 2
+    vwcons = reshape(pairs',1,[]); %conditions in pair order: pair 1 L, pair 1 LW, pair 2 L, pair 2 LW, ...
+    vwcons = vwcons(ismember(condgrp(vwcons), coup_groups)); %only the ones with S1 LFP loaded
+    [~,vwv] = sortrows([chshank chrow]); %every kept V1 channel, shank by shank, top to bottom (places in chanlist)
+    [~,vws] = sortrows([chshank_s1 chrow_s1]); %every kept S1 channel, the same way (places in chanlist_s1)
+
+    %everything the key presses need, kept with the figure
+    ud = struct();
+    ud.rate = rate; %not a real copy, MATLAB shares the memory until somebody changes one of them
+    ud.lfp = lfp_s1;
+    ud.pidx = pidx;
+    ud.lidx = find(t_lfp >= plot_ms(1) & t_lfp < plot_ms(2)); %LFP samples shown
+    ud.tv = t_bin(pidx); %ms
+    ud.ts = t_lfp(ud.lidx); %ms
+    ud.vw = vwv;
+    ud.sw = vws;
+    ud.cons = vwcons;
+    ud.condis = condis;
+    ud.animal = animal;
+    ud.chanlist = chanlist;
+    ud.chshank = chshank;
+    ud.respchans = respchans;
+    ud.chanlist_s1 = chanlist_s1;
+    ud.chshank_s1 = chshank_s1;
+    ud.bands = bands;
+    ud.bandnames = bandnames;
+    ud.plot_ms = plot_ms;
+
+    %band-pass filters, the same ones as the coupling section (4th order Butterworth, run forwards and backwards)
+    nvwb = size(bands,1);
+    ud.sos = cell(1,nvwb);
+    ud.g = cell(1,nvwb);
+    for b = 1:nvwb
+        [z,p,k] = butter(2, bands(b,:)/(1000/2), 'bandpass'); %the LFP is 1 kHz
+        [ud.sos{b},ud.g{b}] = zp2sos(z,p,k);
+    end
+
+    %each condition's response trials (rows of rate) and their labels
+    ud.rtrs = cell(1,ncond);
+    ud.trlab = cell(1,ncond);
+    for con = vwcons
+        ud.rtrs{con} = find(resp{con} == true); %lfp_s1 holds exactly these, in the same order
+        ti = trinfo{con}(ud.rtrs{con},:); % [response trials x 2] file, trial number
+        ud.trlab{con} = string(ti(:,2));
+        if numel(unique(trinfo{con}(:,1))) > 1 %more than one file pooled, say which
+            ud.trlab{con} = "f" + ti(:,1) + ":" + ti(:,2);
+        end
+    end
+
+    %scale of each V1 channel: 99.5th percentile of its rate over all the conditions (every 5th ms is plenty, the rate is smoothed)
+    ud.vscale = ones(1,nch); %spikes/s
+    for ch = 1:nch
+        allv = [];
+        for con = vwcons
+            allv = [allv; reshape(rate{con}(ud.rtrs{con},pidx(1:5:end),ch),[],1)];
+        end
+        sc = prctile(allv,99.5);
+        if sc > 0 %a silent channel keeps 1
+            ud.vscale(ch) = sc;
+        end
+    end
+
+    %what's on screen: the first responsive V1 channel, the first S1 channel, first condition, first band
+    ud.iv = max([1; find(respchans(vwv),1)]);
+    ud.is = 1;
+    ud.ic = 1;
+    ud.ib = 1;
+    ud.filtered = [0 0]; %S1 channel and band that are filtered right now (none yet)
+
+    vwfig = figure('Name',[animal ' V1 spiking x S1 band'],'Color','w','WindowKeyPressFcn',@pairview_keypress);
+    set(vwfig, 'Position', get(0, 'Screensize'));
+    ud.ax = axes(vwfig,'Position',[0.04 0.06 0.77 0.86]); %the trials, the probe maps get the right side
+    hold(ud.ax,'on')
+    ud.hs = plot(ud.ax, NaN, NaN, 'Color',[0.85 0 0], 'LineWidth',1.1); %S1, every trial in one line (NaN between trials)
+    ud.hv = plot(ud.ax, NaN, NaN, 'Color','k', 'LineWidth',1.1); %V1, the same
+    xline(ud.ax,0,'b')
+    xbar = plot_ms(2) + diff(plot_ms)*[0.012 0.045]; %where the scale bars sit (next to trial 1, each 0.9 of a row tall)
+    plot(ud.ax, xbar([1 1]), [-0.45 0.45], 'Color',[0.85 0 0], 'LineWidth',2)
+    plot(ud.ax, xbar([2 2]), [-0.45 0.45], 'k', 'LineWidth',2)
+    ud.txs = text(ud.ax, xbar(1), -0.55, '', 'Color',[0.85 0 0], 'FontSize',8, 'Rotation',-90, 'HorizontalAlignment','left');
+    ud.txv = text(ud.ax, xbar(2), -0.55, '', 'Color','k', 'FontSize',8, 'Rotation',-90, 'HorizontalAlignment','left');
+    ud.note = text(ud.ax, 0.5, 0.5, '', 'Units','normalized', 'HorizontalAlignment','center', 'FontSize',14);
+    hold(ud.ax,'off')
+    xlim(ud.ax,[plot_ms(1) plot_ms(2) + diff(plot_ms)*0.06])
+    xlabel(ud.ax,'ms from stim onset')
+    ylabel(ud.ax,'trial (recording order)')
+
+    %the probe maps: V1 on top, S1 below, drawn once. A key press only moves the filled square and recolours its number
+    ud.chrow = chrow;
+    ud.chrow_s1 = chrow_s1;
+    mapinfo = {pmap, chanlist, respchans, [0.84 0.54 0.15 0.36], 'k', [ProbeInfo.Areas{prb} ' (left / right)']; ...
+        pmap_s1, chanlist_s1, false(nch_s1,1), [0.84 0.07 0.15 0.36], [0.85 0 0], [ProbeInfo.Areas{prb_s1} ' (up / down)']}; %{V1; S1}: map, kept channels, responsive or not, place, colour, title
+    ud.sq = gobjects(1,2); %the filled squares (V1, S1)
+    ud.num = cell(1,2); %{V1, S1} the channel numbers, one text per kept channel
+    for m = 1:2
+        pm = mapinfo{m,1}; % [rows x shanks] raw channel IDs, 0 = no site
+        cl = mapinfo{m,2};
+        rc = mapinfo{m,3};
+        axm = axes(vwfig,'Position',mapinfo{m,4});
+        Mk = nan(size(pm)); %1 = kept, 2 = kept and responsive, NaN = blank
+        for i = 1:numel(cl)
+            Mk(pm == cl(i)) = 1 + rc(i);
+        end
+        h = imagesc(axm, Mk);
+        set(h,'AlphaData',isnan(Mk) == false)
+        colormap(axm,[0.92 0.92 0.92; 0.72 0.72 0.72])
+        clim(axm,[1 2])
+        hold(axm,'on')
+        ud.sq(m) = rectangle(axm,'Position',[0.5 0.5 1 1],'FaceColor',mapinfo{m,5},'EdgeColor','none');
+        ud.num{m} = gobjects(1,numel(cl));
+        for i = 1:numel(cl)
+            [row,shank] = find(pm == cl(i)); %where this channel sits
+            ud.num{m}(i) = text(axm, shank, row, num2str(cl(i)), 'HorizontalAlignment','center', 'FontSize',7);
+        end
+        [rrow,rshank] = find(pm > 0 & ismember(pm, cl) == false); %removed channels
+        for i = 1:numel(rrow)
+            text(axm, rshank(i), rrow(i), 'x', 'HorizontalAlignment','center', 'Color',[.5 .5 .5], 'FontSize',7)
+        end
+        hold(axm,'off')
+        set(axm,'YDir','reverse','XTick',1:size(pm,2),'YTick',[],'TickLength',[0 0],'FontSize',8,'Box','on')
+        xlim(axm,[0.5 size(pm,2)+0.5])
+        ylim(axm,[0.5 size(pm,1)+0.5])
+        xlabel(axm,'shank')
+        title(axm, mapinfo{m,6},'Interpreter','none')
+    end
+    ud.lit = [1 1]; %numbers that are white right now (V1, S1)
+    setappdata(vwfig,'ud',ud);
+    pairview_redraw(vwfig);
+end
+
+
+%Now the local functions for the trial by trial viewer. MATLAB wants these at the very end of the script
+
+function pairview_keypress(fig,evt)
+%keys for the viewer: left/right = V1 channel, up/down = S1 channel, c = condition, b = band
+ud = getappdata(fig,'ud');
+switch evt.Key
+    case 'rightarrow'
+        ud.iv = min(ud.iv + 1, numel(ud.vw));
+    case 'leftarrow'
+        ud.iv = max(ud.iv - 1, 1);
+    case 'downarrow'
+        ud.is = min(ud.is + 1, numel(ud.sw));
+    case 'uparrow'
+        ud.is = max(ud.is - 1, 1);
+    case 'c'
+        ud.ic = mod(ud.ic, numel(ud.cons)) + 1;
+    case 'b'
+        ud.ib = mod(ud.ib, size(ud.bands,1)) + 1;
+    otherwise
+        return
+end
+setappdata(fig,'ud',ud);
+pairview_redraw(fig);
+end
+
+
+function pairview_redraw(fig)
+%draws the current V1 channel x S1 channel x condition x band. Only the lines' data are swapped, nothing is rebuilt
+ud = getappdata(fig,'ud');
+con = ud.cons(ud.ic);
+ch = ud.vw(ud.iv); %place in chanlist
+c1 = ud.sw(ud.is); %place in chanlist_s1
+
+%new S1 channel or band: filter it for every condition (whole loaded trial, then the part shown), and get its scale
+if isequal(ud.filtered, [c1 ud.ib]) == false
+    ud.sband = cell(1,numel(ud.condis)); %{conditions} [samples shown x response trials] uV
+    allv = [];
+    for k = ud.cons
+        ntr = size(ud.lfp{k},1);
+        if ntr == 0
+            continue
+        end
+        X = double(reshape(ud.lfp{k}(:,:,c1), ntr, []))'; % [samples x trials] uV
+        X = filtfilt(ud.sos{ud.ib}, ud.g{ud.ib}, X - mean(X,1));
+        ud.sband{k} = X(ud.lidx,:);
+        allv = [allv; reshape(abs(ud.sband{k}),[],1)];
+    end
+    ud.sscale = prctile(allv,99.5); %uV, drawn as half of 0.9 of a row
+    if isempty(allv) || ud.sscale <= 0
+        ud.sscale = 1;
+    end
+    ud.filtered = [c1 ud.ib];
+    setappdata(fig,'ud',ud);
+end
+
+%every trial in its own row, trial 1 on top (row centres at 0, -1, -2, ...), NaN between trials so it's one line
+rtrs = ud.rtrs{con};
+ntr = numel(rtrs);
+if ntr == 0
+    set(ud.hs,'XData',NaN,'YData',NaN)
+    set(ud.hv,'XData',NaN,'YData',NaN)
+    ud.note.String = [ud.condis{con} ': no response trials'];
+    ylim(ud.ax,[-1 1])
+    set(ud.ax,'YTick',[])
+else
+    ud.note.String = '';
+    rows = -(0:ntr-1); % [1 x trials] row centres
+    Ys = ud.sband{con} / ud.sscale * 0.45 + rows; % [samples x trials]
+    Yv = double(reshape(ud.rate{con}(rtrs,ud.pidx,ch), ntr, []))' / ud.vscale(ch) * 0.9 - 0.45 + rows; % [bins x trials]
+    Xs = repmat([ud.ts(:); NaN], 1, ntr);
+    Xv = repmat([ud.tv(:); NaN], 1, ntr);
+    Ys = [Ys; nan(1,ntr)];
+    Yv = [Yv; nan(1,ntr)];
+    set(ud.hs,'XData',Xs(:),'YData',Ys(:))
+    set(ud.hv,'XData',Xv(:),'YData',Yv(:))
+    ylim(ud.ax,[-ntr 1])
+    set(ud.ax,'YTick',fliplr(rows),'YTickLabel',flipud(ud.trlab{con}),'FontSize',8)
+end
+
+%probe maps: move the filled squares to the current channels, their numbers in white
+ud.num{1}(ud.lit(1)).Color = 'k';
+ud.num{2}(ud.lit(2)).Color = 'k';
+ud.sq(1).Position = [ud.chshank(ch)-0.5 ud.chrow(ch)-0.5 1 1];
+ud.sq(2).Position = [ud.chshank_s1(c1)-0.5 ud.chrow_s1(c1)-0.5 1 1];
+ud.num{1}(ch).Color = 'w';
+ud.num{2}(c1).Color = 'w';
+ud.lit = [ch c1];
+setappdata(fig,'ud',ud);
+
+%scale bars and title
+ud.txs.String = [num2str(2*ud.sscale,'%.3g') ' uV'];
+ud.txv.String = [num2str(ud.vscale(ch),'%.3g') ' spikes/s'];
+if ud.respchans(ch) == true
+    rtxt = 'responsive';
+else
+    rtxt = 'not responsive';
+end
+title(ud.ax,{[ud.animal ' ' ud.condis{con} ': S1 CH' num2str(ud.chanlist_s1(c1)) ' (shank ' num2str(ud.chshank_s1(c1)) ') ' ud.bandnames{ud.ib} ' ' ...
+    num2str(ud.bands(ud.ib,1)) '-' num2str(ud.bands(ud.ib,2)) ' Hz LFP (red) and V1 CH' num2str(ud.chanlist(ch)) ' (shank ' num2str(ud.chshank(ch)) ', ' rtxt ') spike rate (black), ' num2str(ntr) ' response trials'], ...
+    ['left/right = V1 channel (' num2str(ud.iv) ' of ' num2str(numel(ud.vw)) '), up/down = S1 channel (' num2str(ud.is) ' of ' num2str(numel(ud.sw)) '), c = condition (' num2str(ud.ic) ' of ' num2str(numel(ud.cons)) '), b = band']}, ...
+    'Interpreter','none','FontSize',11)
+end
