@@ -28,6 +28,14 @@
 %     is inferred from the conversion code, not documented by the loader.
 %     In the MUA section data is kept as int16 [channels x timepoints]
 %     and converted to uV only where it's used, to save memory.
+%     Both the LFP lowpass and the MUA bandpass filter 16 channels at a
+%     time (chblock): fast (all CPU threads) and never the whole recording
+%     in double at once. Each channel is still filtered on its own, so the
+%     results are exactly the same as one channel / all channels at a time.
+%     INFERRED (not documented by the loader or ProbeInfo): row i of the raw
+%     data is channel ProbeInfo.ChanIds(i), i.e. ChanIds = 1:Chans (true for
+%     the probe variants made in this script). The spike array is indexed by
+%     ChanIds row, the LFP array by raw row, so they only line up if this holds.
 %   animal (string) - PROVIDED BY USER. Animal identifier, recommended
 %     format YYYYMMDD-p# [dateOfRecording-postnatalDay]. Used as the
 %     prefix for all output files.
@@ -190,54 +198,77 @@
 
 
 %% NEEDS INPUT FIRST
-%clear all
-%close all
+clear all
+close all
 
 %%%Experiment details%%%
-animal = '20261011-p7';
+animal = '20260821-p10';
 %where is the data stored?
-load_directory = 'E:\Roy\Silicon Probe Raw Data\20261011-p7'; %recommend to choose folder for whole experiment
+load_directory = 'E:\Roy\Silicon Probe Raw Data\20260821-p10'; %recommend to choose folder for whole experiment
 
 %where will the output be saved?
 save_directory = 'E:\Roy\Processed Silicon Probe Data'; %this should stay the same for all animals/recordings
 
-stim_all = {
-             'whiskeractive'
-             'whiskeractive_2'
+stim_all = {    
+             % 'whiskeractive'
+             % 'whiskeractive_2'
              %'whiskeractive_3'
-             'whiskeractive_TTX'
-             'whiskeractive_TTX_2'
-             %'whiskeractive_TTX_3'
-
-            % 'whisker_2'
-            % 'whisker_3'
-            % 'whisker_4'
-            % %'whisker_5'
-            % 'light22_40-n-whisker'
-            % 'light22_40-n-whisker_2'
-            % 'light22_40-n-whisker_3'
-            % 'light22_40-n-whisker_4'
-            % %'light22_40-n-whisker_5'
+             % 'whiskeractive_TTX'
+             % 'whiskeractive_TTX_2'
+            %'whiskeractive_TTX_3'
+              'whisker'
+             'whisker_2'
+             'whisker_3'
+             'whisker_4'
+            'whisker_5'
+             'light22_40'
+             'light22_40_2'
+             'light22_40_3'
+             'light22_40_4'
+            'light22_40_5'
+            'light22_40-n-whisker'
+             'light22_40-n-whisker_2'
+             'light22_40-n-whisker_3'
+             'light22_40-n-whisker_4'
+             'light22_40-n-whisker_5'
+            %'whisker'
+            %'light22_32'
+            %'light22_32-n-whisker'
             % 'light22_40'
-            % 'light22_40_2'
-            % 'light22_40_3'
-            % 'light22_40_4'
-            %'light22_40_5'
-            % 'whisker_TTX'
-            % 'whisker_TTX_2'
-            % 'whisker_TTX_3'
-            % 'whisker_TTX_4'
-            % 'whisker_TTX_5'
-            % 'light22_40-n-whisker_TTX'
-            % 'light22_40-n-whisker_TTX_2'
-            % 'light22_40-n-whisker_TTX_3'
-            % 'light22_40-n-whisker_TTX_4'
-            % 'light22_40-n-whisker_TTX_5'
-            % 'light22_40_TTX'
-            % 'light22_40_TTX_2'
-            % 'light22_40_TTX_3'
-            % 'light22_40_TTX_4'
-            % 'light22_40_TTX_5'
+            % 'light22_40-n-whisker'
+            % 'light22_40_far'
+            % 'light22_40_far-n-whisker'
+            
+            %'light22_48'
+            %'light22_48-n-whisker'
+            %'light22_56'
+            %'light22_56-n-whisker'
+            % 'whisker_2'
+            %'light22_32_2'
+            %'light22_32-n-whisker_2'
+            %'light22_40_2'
+            %'light22_40-n-whisker_2'
+            %'light22_48_2'
+            %'light22_48-n-whisker_2'
+            %'light22_56_2'
+            %'light22_56-n-whisker_2'
+            
+            'whisker_TTX'
+            'whisker_TTX_2'
+            'whisker_TTX_3'
+            'whisker_TTX_4'
+            'whisker_TTX_5'
+            'light22_40_TTX'
+            'light22_40_TTX_2'
+            'light22_40_TTX_3'
+            'light22_40_TTX_4'
+            'light22_40_TTX_5'
+            'light22_40-n-whisker_TTX'
+            'light22_40-n-whisker_TTX_2'
+            'light22_40-n-whisker_TTX_3'
+            'light22_40-n-whisker_TTX_4'
+            'light22_40-n-whisker_TTX_5'
+           
                          };            
 
 
@@ -266,7 +297,7 @@ mr_clean = 1;
 LFP = 1; %local field potential
 CSD = 1; %current source density
 TF = 0; %time frequency
-MUA = 0; %Spiking
+MUA = 1; %Spiking
 
 %want to check for bad trials?
 TrRemove = 0;
@@ -605,14 +636,26 @@ for i = 1:size(session.recordNodes{1,1}. recordings,2)
     datums = session.recordNodes{1,1}. recordings{1,i}.continuous('Acquisition_Board-100.acquisition_board').samples;
     ttl30{i} = double(datums(ProbeInfo.TTLch,:)).*0.1950; %TTL at 30kHz, kept for stim detection before downsampling
     %filter and downsample one channel at a time (the whole recording at 30kHz in double would be ~18 GB)
-    lfp1k = zeros(size(datums,1), ceil(size(datums,2)/30));
-    for ch = 1:size(datums,1)
-        chdat = double(datums(ch,:)).*0.1950; %converts int16 to uV
-        if ismember(ch, ProbeInfo.ChanIds) %recording channels only; the TTL row is left unfiltered
-            chdat = filtfilt(lfp_sos, lfp_g, chdat);
-        end
-        lfp1k(ch,:) = downsample(chdat,30); %to 1kH, each timepoint is 1 ms
+    %lfp1k = zeros(size(datums,1), ceil(size(datums,2)/30));
+    %for ch = 1:size(datums,1)
+    %    chdat = double(datums(ch,:)).*0.1950; %converts int16 to uV
+    %    if ismember(ch, ProbeInfo.ChanIds) %recording channels only; the TTL row is left unfiltered
+    %        chdat = filtfilt(lfp_sos, lfp_g, chdat);
+    %    end
+    %    lfp1k(ch,:) = downsample(chdat,30); %to 1kH, each timepoint is 1 ms
+    %end
+    %^ replaced by the block version below: filtfilt on one channel only uses one CPU thread. Given 16 channels at once
+    %it spreads them over all the threads (~2.5x faster), and the result is exactly the same (each channel is still filtered on its own)
+    chblock = 16; %channels filtered at once. 16 channels of a long recording in double is ~5 GB, far from the ~42 GB of all of them
+    lfp1k = zeros(size(datums,1), ceil(size(datums,2)/30)); % [channels (normal + TTL) x timepoints at 1kHz]
+    for b = 1:chblock:length(ProbeInfo.ChanIds)
+        blockchs = ProbeInfo.ChanIds(b:min(b+chblock-1,length(ProbeInfo.ChanIds))); %recording channels in this block (rows of datums)
+        chdat = double(datums(blockchs,:)')*0.1950; %int16 to uV [timepoints x channels in block]
+        chdat = filtfilt(lfp_sos, lfp_g, chdat); %filters down each column, so each channel on its own
+        lfp1k(blockchs,:) = downsample(chdat,30)'; %to 1kHz, each timepoint is 1 ms
     end
+    otherchs = setdiff(1:size(datums,1), ProbeInfo.ChanIds); %the TTL row is left unfiltered
+    lfp1k(otherchs,:) = downsample(double(datums(otherchs,:)')*0.1950,30)'; %int16 to uV, then to 1kHz
     data{i} = lfp1k;
     seglen1k(i) = size(lfp1k,2); %length of this piece after downsampling
     %resample version, replaced by the 300 Hz filtfilt above: resample rings at the ends of each recording piece
@@ -629,7 +672,7 @@ for i = 1:size(session.recordNodes{1,1}. recordings,2)
     %clear datums_lfp
 end
 data = horzcat(data{:}); %shape is total channels (normal + TTL) x timepoints
-clear datums lfp1k chdat z p k
+clear datums lfp1k chdat z p k blockchs otherchs
 
 disp('Done')
 %% set channel number for adaptation to different
@@ -2019,8 +2062,12 @@ clear ttl_high pulse_ends nextend glitch pulse_width
 disp('MUA: Filtering out low frequencies')
 
 %data_band = bandpass(data(ProbeInfo.ChanIds,:)',[300 6000],fs, 'ImpulseResponse','iir')';  <- data is int16 now, convert to uV on the way in
-data_band = bandpass(double(data(ProbeInfo.ChanIds,:)')*0.1950,[300 6000],fs, 'ImpulseResponse','iir')'; % [channels x timepoints in recording], int16 to uV before filtering
-clear data
+%data_band = bandpass(double(data(ProbeInfo.ChanIds,:)')*0.1950,[300 6000],fs, 'ImpulseResponse','iir')'; % [channels x timepoints in recording], int16 to uV before filtering
+%clear data
+%^ replaced: filtering all channels at once makes several full-size double copies (~42 GB each for a 40M-sample recording),
+%more than the 128 GB of RAM, so MATLAB swapped to disk (30 min for MUA of a big recording). The filtering now happens
+%16 channels at a time in "Split up data into individual trial activity" below. Same filter, so exactly the same results
+chblock = 16; %channels filtered at once (all CPU threads still get used)
 
 
 
@@ -2047,16 +2094,23 @@ peristim_idx = reshape(peristim_idx,1,[]); %make it into one nice row, epochs en
 
 %now filter the data columns so we only have the epochs we want
 
-wittled_braindat = data_band(:, peristim_idx); %matrix of data from selected epochs, with epochs stuck end-to-end
+%wittled_braindat = data_band(:, peristim_idx); %matrix of data from selected epochs, with epochs stuck end-to-end
+%^ now cut per channel in the block loop below (no full-size data_band anymore)
 
 
 %% calc MAD, set threshold, and filter to remove some duplicates
 
 %calculate median absolute deviation of each channel
-MAD = -median(abs(data_band-median(data_band,2))/0.6745,2); 
+%MAD = -median(abs(data_band-median(data_band,2))/0.6745,2);
+%^ now calculated per channel in the block loop below, same formula
 
 if MUAmyfault == 1
     disp('MUA: Asking you a question. Please answer me.')
+
+    %filter just the channels you asked to see, so you can pick the threshold before the block loop runs
+    %(MUAchcheck are rows of ProbeInfo.ChanIds, the same rows data_band used to have)
+    chk_band = bandpass(double(data(ProbeInfo.ChanIds(MUAchcheck),:)')*0.1950,[300 6000],fs, 'ImpulseResponse','iir'); % [timepoints x checked channels], int16 to uV before filtering
+    chk_MAD = -median(abs(chk_band-median(chk_band,1))/0.6745,1); % [1 x checked channels], same MAD as for all channels below
 
     colmap = cool(7);
     for i = 1:size(MUAchcheck,2)
@@ -2064,22 +2118,24 @@ if MUAmyfault == 1
         %title(['Example MAD Thresholds on Ch' MUAchcheck(i)])  <- stuck the channel number in as a character, not a number
         title(['Example MAD Thresholds on Ch' num2str(MUAchcheck(i))])
         hold on
-        ch_trace = reshape(wittled_braindat(MUAchcheck(i),:), size(stim_times,1),[]); % [trials x epoch length]
+        %ch_trace = reshape(wittled_braindat(MUAchcheck(i),:), size(stim_times,1),[]); % [trials x epoch length]  <- wittled_braindat isn't made anymore, same values cut from chk_band
+        ch_trace = reshape(chk_band(peristim_idx,i), size(stim_times,1),[]); % [trials x epoch length]
         ch_trace = reshape(ch_trace',1,[]); %epochs end-to-end in time order, so it looks like a real trace
         %plot(wittled_braindat(MUAchcheck(i),:),'Color','k')  <- this plotted the trial-interleaved row (same sample from each trial in a row), not a real trace
         plot(ch_trace,'Color','k')
-        yline(MAD(MUAchcheck(i))*4,'color',colmap(1,:))
-        yline(MAD(MUAchcheck(i))*6,'color',colmap(2,:))
-        yline(MAD(MUAchcheck(i))*8,'color',colmap(3,:))
-        yline(MAD(MUAchcheck(i))*10,'color',colmap(4,:))
-        yline(MAD(MUAchcheck(i))*12,'color',colmap(5,:))
-        yline(MAD(MUAchcheck(i))*14,'color',colmap(6,:))
-        yline(MAD(MUAchcheck(i))*16,'color',colmap(6,:))
+        %MAD(MUAchcheck(i)) -> chk_MAD(i) below, same value
+        yline(chk_MAD(i)*4,'color',colmap(1,:))
+        yline(chk_MAD(i)*6,'color',colmap(2,:))
+        yline(chk_MAD(i)*8,'color',colmap(3,:))
+        yline(chk_MAD(i)*10,'color',colmap(4,:))
+        yline(chk_MAD(i)*12,'color',colmap(5,:))
+        yline(chk_MAD(i)*14,'color',colmap(6,:))
+        yline(chk_MAD(i)*16,'color',colmap(6,:))
         legend('','MAD*4', 'MAD*6', 'MAD*8', 'MAD*10', 'MAD*12','MAD*14','MAD*16')
-        hold off   
+        hold off
     end
-    
-    clear ch_trace
+
+    clear ch_trace chk_band chk_MAD
     dlgtitle = 'You requested to manually set Spike Threshold';
     prompt = {'Please input a MAD multiplier to set the Spike threshold'};
     fieldsize = [1 50];
@@ -2094,7 +2150,8 @@ else
 end
 
 %get all timepoints over MAD threshold
-spikes = wittled_braindat <= MAD*MUAthresh ; % [channels x trials*epoch length], trial-interleaved, logical
+%spikes = wittled_braindat <= MAD*MUAthresh ; % [channels x trials*epoch length], trial-interleaved, logical
+%^ now done per channel in the block loop below
 
 %binarize by treating timepoint of threshold crossing as the spike
 %NOTE: this part could be improved to reflect the more standard spike
@@ -2107,15 +2164,34 @@ spikes = wittled_braindat <= MAD*MUAthresh ; % [channels x trials*epoch length],
 %create 3D matrix of data
 disp('MUA: Splitting data into trials and making summary stuff')
 
-for i = 1:size(wittled_braindat,1)
-    channel_data = spikes(i,:);
-    banded_data = wittled_braindat(i,:);
-    geoenginned_ch = reshape(channel_data, size(stim_times,1),[]); % [trials x epoch length], over-threshold mask
-    geoenginned_ch = cat(2,zeros(size(geoenginned_ch,1),1),diff(geoenginned_ch,1,2)>0); %threshold crossing onsets, found along time within each trial
-    geoband_ch = reshape(banded_data, size(stim_times,1),[]);
-    stim_spike_stimchunks(:,:,i) = geoenginned_ch; %with dimensions [trials x epoch length x channels]
-    %bandpassed_stimchunks(:,:,i) = geoband_ch;
+%for i = 1:size(wittled_braindat,1)
+%    channel_data = spikes(i,:);
+%    banded_data = wittled_braindat(i,:);
+%    geoenginned_ch = reshape(channel_data, size(stim_times,1),[]); % [trials x epoch length], over-threshold mask
+%    geoenginned_ch = cat(2,zeros(size(geoenginned_ch,1),1),diff(geoenginned_ch,1,2)>0); %threshold crossing onsets, found along time within each trial
+%    geoband_ch = reshape(banded_data, size(stim_times,1),[]);
+%    stim_spike_stimchunks(:,:,i) = geoenginned_ch; %with dimensions [trials x epoch length x channels]
+%    %bandpassed_stimchunks(:,:,i) = geoband_ch;
+%end
+%^ replaced by the block loop below: filter 16 channels, get their MAD, cut out the trials, find the threshold
+%crossings, next 16. Same steps and formulas as above, just never the whole recording in memory at once.
+%stim_spike_stimchunks is also made full size up front now, instead of growing (and being re-copied) every channel
+
+nch = length(ProbeInfo.ChanIds); %recording channels
+stim_spike_stimchunks = zeros(size(stim_times,1), length(peristim_idx)/size(stim_times,1), nch); % [trials x epoch length x channels], 0/1 in double like before
+MAD = zeros(nch,1); %median absolute deviation of each channel [channels x 1]
+for b = 1:chblock:nch
+    blockchs = b:min(b+chblock-1,nch); %rows of ProbeInfo.ChanIds in this block
+    disp(['MUA: Filtering and finding spikes on channels ' num2str(blockchs(1)) '-' num2str(blockchs(end))])
+    data_band = bandpass(double(data(ProbeInfo.ChanIds(blockchs),:)')*0.1950,[300 6000],fs, 'ImpulseResponse','iir'); % [timepoints in recording x channels in block], int16 to uV before filtering
+    MAD(blockchs) = -median(abs(data_band-median(data_band,1))/0.6745,1); %MAD of each channel in the block, over the whole recording
+    for c = 1:length(blockchs)
+        wittled_ch = data_band(peristim_idx,c); %this channel's selected epochs, stuck end-to-end (trial-interleaved, like wittled_braindat was)
+        geoenginned_ch = reshape(wittled_ch <= MAD(blockchs(c))*MUAthresh, size(stim_times,1),[]); % [trials x epoch length], over-threshold mask
+        stim_spike_stimchunks(:,2:end,blockchs(c)) = diff(geoenginned_ch,1,2)>0; %threshold crossing onsets, found along time within each trial. first sample stays 0, like the old cat(zeros)
+    end
 end
+clear data data_band wittled_ch geoenginned_ch blockchs
 
 
 %% In case channel order from GUI is wrong, change it here
